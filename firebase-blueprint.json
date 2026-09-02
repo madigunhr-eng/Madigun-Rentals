@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "An asset listed in the Madigun inventory system",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Display name of the inventory asset" },
+        "sku": { "type": "string", "description": "Stock Keeping Unit or serial identifier" },
+        "quantityTotal": { "type": "integer", "description": "Total quantity owned" },
+        "quantityAvailable": { "type": "integer", "description": "Quantity currently available for renting" },
+        "warehouseId": { "type": "string", "description": "Reference ID to the assigned Warehouse" },
+        "description": { "type": "string", "description": "Item description or physical details" },
+        "status": { "type": "string", "enum": ["In Stock", "Partially Rented", "Out of Stock", "In Use", "Under Maintenance", "Retired"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isStationary": { "type": "boolean", "description": "Whether the asset is a stationary room asset" },
+        "isCompanyProperty": { "type": "boolean", "description": "Whether the asset is a corporate company property" },
+        "plateNumber": { "type": "string", "description": "Vehicle license plate number" },
+        "serialNumber": { "type": "string", "description": "Machinery/generator serial number" },
+        "lastMaintenanceDate": { "type": "string", "description": "Last maintenance log timestamp" },
+        "nextMaintenanceDate": { "type": "string", "description": "Scheduled next maintenance timestamp" },
+        "assetCondition": { "type": "string", "enum": ["Excellent", "Good", "Fair", "Poor", "Under Repair"] }
+      },
+      "required": ["name", "sku", "quantityTotal", "quantityAvailable", "status", "createdAt"]
+    },
+    "Transmittal": {
+      "title": "Transmittal",
+      "description": "A rental checkout contract containing details of checked-out assets",
+      "type": "object",
+      "properties": {
+        "transmittalNo": { "type": "string", "description": "Unique generated transmittal invoice code" },
+        "handler": { "type": "string", "description": "Custodian handler dispatcher" },
+        "rentee": { "type": "string", "description": "Customer renting the items" },
+        "address": { "type": "string", "description": "Location or event venue where the items go" },
+        "dateCheckout": { "type": "string", "format": "date" },
+        "dateCheckin": { "type": "string", "format": "date" },
+        "notes": { "type": "string", "description": "Special logistics instructions" },
+        "status": { "type": "string", "enum": ["Pending", "Partially Returned", "Returned"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["transmittalNo", "handler", "rentee", "address", "dateCheckout", "dateCheckin", "status", "createdAt"]
+    },
+    "DeletedLog": {
+      "title": "DeletedLog",
+      "description": "A record of a deleted transmittal contract",
+      "type": "object",
+      "properties": {
+        "transmittalNo": { "type": "string", "description": "Transmittal invoice code of the deleted record" },
+        "rentee": { "type": "string", "description": "Recipient of the deleted transmittal" },
+        "handler": { "type": "string", "description": "Custodian handler" },
+        "deletedAt": { "type": "string", "format": "date-time" },
+        "originalCreatedAt": { "type": "string", "format": "date-time" },
+        "statusAtDeletion": { "type": "string" },
+        "itemsSummary": { "type": "string" },
+        "itemsCount": { "type": "integer" },
+        "originalData": { "type": "object", "description": "Full serialized transmittal snapshot for recovery" }
+      },
+      "required": ["transmittalNo", "rentee", "handler", "deletedAt", "originalCreatedAt", "statusAtDeletion", "itemsSummary", "itemsCount"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "A physical office room or storage facility space",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "itemId": { "type": "string" },
+              "quantity": { "type": "integer" }
+            },
+            "required": ["itemId", "quantity"]
+          }
+        }
+      },
+      "required": ["name", "createdAt"]
+    },
+    "Warehouse": {
+      "title": "Warehouse",
+      "description": "A centralized warehouse entity to organize inventory assets",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the warehouse" },
+        "description": { "type": "string", "description": "A description of the warehouse" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Collection of all inventory assets available or rented"
+    },
+    "/transmittals/{transmittalId}": {
+      "schema": "Transmittal",
+      "description": "Collection of all rental outbound checkout records"
+    },
+    "/deleted_logs/{logId}": {
+      "schema": "DeletedLog",
+      "description": "Collection of all deleted transmittal logs"
+    },
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Collection of all physical facility rooms"
+    },
+    "/warehouses/{warehouseId}": {
+      "schema": "Warehouse",
+      "description": "Collection of all centralized warehouses"
+    },
+    "/users/{userId}": {
+      "description": "Collection of authorized personnel login credentials"
+    }
+  }
+}
