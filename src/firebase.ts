@@ -12,12 +12,14 @@ const app = initializeApp({
   appId: config.appId
 });
 
+const firestoreDbId = (config as any).firestoreDatabaseId || 'ai-studio-madigunrentals-25b80405-bd8e-4331-a790-adda554e8aef';
+
 // Initialize Firestore with memory local cache to prevent slow IndexedDB lock-acquisition timeouts 
 // in sandboxed iframes (like AI Studio previews).
 const db = initializeFirestore(app, {
   localCache: memoryLocalCache(),
   experimentalAutoDetectLongPolling: true
-}, (config as any).firestoreDatabaseId || '(default)');
+}, firestoreDbId);
 
 // Validate connection to Firestore as per skill guidelines
 async function testConnection() {

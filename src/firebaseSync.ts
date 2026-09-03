@@ -55,17 +55,27 @@ export function initFirestoreSync(): () => void {
       const unsub = onSnapshot(colRef, (snapshot) => {
         notifyStatus(true);
         if (snapshot.empty) {
-          const localItems = localStore.getCollection(colName);
-          if (localItems.length > 0) {
-            // Automatically push local recovery data up to Cloud Firestore
-            const batch = writeBatch(db);
-            localItems.forEach((item: any) => {
-              if (item && item.id) {
-                const { id, ...data } = item;
-                batch.set(doc(db, colName, id), data, { merge: true });
+          isSyncingFromFirestore = true;
+          try {
+            if (colName === 'users') {
+              const localUsers = localStore.getCollection('users');
+              if (localUsers.length > 0) {
+                const batch = writeBatch(db);
+                localUsers.forEach((u: any) => {
+                  if (u && u.id) {
+                    const { id, ...data } = u;
+                    batch.set(doc(db, 'users', id), data, { merge: true });
+                  }
+                });
+                batch.commit().catch(e => console.warn('Users sync error:', e));
               }
-            });
-            batch.commit().catch((e: any) => console.warn(`Auto-seed notice for ${colName}:`, e.message));
+            } else {
+              localStore.setCollection(colName, []);
+            }
+          } finally {
+            setTimeout(() => {
+              isSyncingFromFirestore = false;
+            }, 50);
           }
           return;
         }

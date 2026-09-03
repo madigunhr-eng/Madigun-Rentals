@@ -127,7 +127,7 @@ export function generateId(prefix: string = 'id'): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-// Initial Seed Data
+// Initial Seed Data: Default user accounts
 const DEFAULT_USERS: UserProfile[] = [
   {
     id: 'EMP-2026-001',
@@ -153,7 +153,7 @@ const DEFAULT_USERS: UserProfile[] = [
     phone: '+63 917 123 4567',
     email: 'marc@madigunhotel.com',
     department: 'Executive Management',
-    bio: 'Managing Director oversee of hotel inventory, banquet transmittals and revenue operations.',
+    bio: 'Managing Director overseeing hotel inventory, banquet transmittals and operations.',
     status: 'Approved',
     createdAt: new Date().toISOString()
   },
@@ -172,382 +172,12 @@ const DEFAULT_USERS: UserProfile[] = [
     createdAt: new Date().toISOString()
   }
 ];
+const DEFAULT_WAREHOUSES: Warehouse[] = [];
+const DEFAULT_CUSTODIANS: Custodian[] = [];
+const DEFAULT_INVENTORY: InventoryItem[] = [];
+const DEFAULT_TRANSMITTALS: Transmittal[] = [];
 
-const DEFAULT_WAREHOUSES: Warehouse[] = [
-  {
-    id: 'WH-001',
-    name: 'Main Central Logistics Warehouse',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'WH-002',
-    name: 'Banquet & Events Staging Depot',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'WH-003',
-    name: 'Audio Visual & Tech Storage Hub',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'WH-004',
-    name: 'Kitchen & Catering Fixtures Staging',
-    createdAt: new Date().toISOString()
-  }
-];
-
-const DEFAULT_CUSTODIANS: Custodian[] = [
-  {
-    id: 'CUST-001',
-    name: 'Ricardo Santos',
-    employeeId: 'EMP-2026-004',
-    role: 'Head of Equipment Logistics',
-    contact: '+63 917 888 1122',
-    status: 'Active',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'CUST-002',
-    name: 'Maria Elena Torres',
-    employeeId: 'EMP-2026-005',
-    role: 'Banquet Operations Custodian',
-    contact: '+63 918 777 3344',
-    status: 'Active',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'CUST-003',
-    name: 'Juan Carlos Dela Cruz',
-    employeeId: 'EMP-2026-006',
-    role: 'Audio-Visual Lead Technician',
-    contact: '+63 920 555 6677',
-    status: 'Active',
-    createdAt: new Date().toISOString()
-  }
-];
-
-const DEFAULT_INVENTORY: InventoryItem[] = [
-  // Rental Halls & Event Venues
-  {
-    id: 'INV-HALL-001',
-    name: 'Grand Imperial Ballroom',
-    sku: 'VEN-GB01',
-    category: 'Rental Halls & Event Venues',
-    quantityTotal: 1,
-    quantityAvailable: 1,
-    status: 'In Stock',
-    location: 'Level 2 - Grand Event Wing',
-    rentalPrice: 25000,
-    price: 25000,
-    isHourlyCharged: true,
-    isNoQuantity: true,
-    chargeType: 'Hourly',
-    warehouseId: 'WH-002',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-HALL-002',
-    name: 'Crystal Poolside Function Hall',
-    sku: 'VEN-CH02',
-    category: 'Rental Halls & Event Venues',
-    quantityTotal: 1,
-    quantityAvailable: 1,
-    status: 'In Stock',
-    location: 'Level 1 - Poolside Garden Terrace',
-    rentalPrice: 15000,
-    price: 15000,
-    isHourlyCharged: true,
-    isNoQuantity: true,
-    chargeType: 'Hourly',
-    warehouseId: 'WH-002',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-HALL-003',
-    name: 'Executive Boardroom & Conference Suite',
-    sku: 'VEN-EB03',
-    category: 'Rental Halls & Event Venues',
-    quantityTotal: 1,
-    quantityAvailable: 1,
-    status: 'In Stock',
-    location: 'Level 3 - Business Center',
-    rentalPrice: 5000,
-    price: 5000,
-    isHourlyCharged: true,
-    isNoQuantity: true,
-    chargeType: 'Hourly',
-    warehouseId: 'WH-003',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-HALL-004',
-    name: 'Outdoor Garden Pavilion & Lawn',
-    sku: 'VEN-GP04',
-    category: 'Rental Halls & Event Venues',
-    quantityTotal: 1,
-    quantityAvailable: 1,
-    status: 'In Stock',
-    location: 'Grounds - South Floral Garden',
-    rentalPrice: 12000,
-    price: 12000,
-    isHourlyCharged: true,
-    isNoQuantity: true,
-    chargeType: 'Hourly',
-    warehouseId: 'WH-002',
-    createdAt: new Date().toISOString()
-  },
-
-  // Corkage & Service Permits
-  {
-    id: 'INV-CRK-001',
-    name: 'Hard Liquor / Spirits Corkage Fee',
-    sku: 'CRK-HQ01',
-    category: 'Corkage & Service Permits',
-    quantityTotal: 999,
-    quantityAvailable: 999,
-    status: 'In Stock',
-    location: 'Front Desk / Banquet Bar',
-    price: 1500,
-    rentalPrice: 1500,
-    isNoQuantity: true,
-    chargeType: 'Flat Fee',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-CRK-002',
-    name: 'Wine & Champagne Corkage Fee',
-    sku: 'CRK-WN02',
-    category: 'Corkage & Service Permits',
-    quantityTotal: 999,
-    quantityAvailable: 999,
-    status: 'In Stock',
-    location: 'Front Desk / Banquet Bar',
-    price: 800,
-    rentalPrice: 800,
-    isNoQuantity: true,
-    chargeType: 'Flat Fee',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-CRK-003',
-    name: 'Outside Catering Utility & Power Service Permit',
-    sku: 'CRK-OC03',
-    category: 'Corkage & Service Permits',
-    quantityTotal: 999,
-    quantityAvailable: 999,
-    status: 'In Stock',
-    location: 'Banquet Kitchen Dock',
-    price: 5000,
-    rentalPrice: 5000,
-    isNoQuantity: true,
-    chargeType: 'Flat Fee',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-CRK-004',
-    name: 'Mobile Cocktail Bar Staging Fee',
-    sku: 'CRK-MB04',
-    category: 'Corkage & Service Permits',
-    quantityTotal: 999,
-    quantityAvailable: 999,
-    status: 'In Stock',
-    location: 'Event Foyer / Poolside',
-    price: 3500,
-    rentalPrice: 3500,
-    isNoQuantity: true,
-    chargeType: 'Flat Fee',
-    createdAt: new Date().toISOString()
-  },
-
-  // Audio & Visual Systems
-  {
-    id: 'INV-AV-001',
-    name: 'Line Array Active Sound System 5000W',
-    sku: 'AV-LA01',
-    category: 'Audio',
-    quantityTotal: 4,
-    quantityAvailable: 4,
-    status: 'In Stock',
-    location: 'WH-003 Section A-1',
-    price: 45000,
-    rentalPrice: 8500,
-    warehouseId: 'WH-003',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-AV-002',
-    name: 'Wireless UHF Quad Microphone Set',
-    sku: 'AV-WM02',
-    category: 'Audio',
-    quantityTotal: 8,
-    quantityAvailable: 8,
-    status: 'In Stock',
-    location: 'WH-003 Section A-2',
-    price: 18000,
-    rentalPrice: 2500,
-    warehouseId: 'WH-003',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-AV-003',
-    name: '4K Laser Projector 8000 Lumens',
-    sku: 'AV-LP03',
-    category: 'Lighting',
-    quantityTotal: 5,
-    quantityAvailable: 5,
-    status: 'In Stock',
-    location: 'WH-003 Section B-1',
-    price: 65000,
-    rentalPrice: 6000,
-    warehouseId: 'WH-003',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-AV-004',
-    name: 'Motorized 150-inch Fast-Fold Screen',
-    sku: 'AV-PS04',
-    category: 'Accessories',
-    quantityTotal: 6,
-    quantityAvailable: 6,
-    status: 'In Stock',
-    location: 'WH-003 Section B-2',
-    price: 22000,
-    rentalPrice: 2000,
-    warehouseId: 'WH-003',
-    createdAt: new Date().toISOString()
-  },
-
-  // Furniture & Banqueting
-  {
-    id: 'INV-FUR-001',
-    name: '60-inch Round Banquet Tables (10-Seater)',
-    sku: 'FUR-BT01',
-    category: 'Accessories',
-    quantityTotal: 60,
-    quantityAvailable: 60,
-    status: 'In Stock',
-    location: 'WH-002 Staging Bay 1',
-    price: 4500,
-    rentalPrice: 350,
-    warehouseId: 'WH-002',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-FUR-002',
-    name: 'Chiavari Tiffany Gold Event Chairs',
-    sku: 'FUR-CC02',
-    category: 'Accessories',
-    quantityTotal: 400,
-    quantityAvailable: 400,
-    status: 'In Stock',
-    location: 'WH-002 Staging Bay 2',
-    price: 1800,
-    rentalPrice: 75,
-    warehouseId: 'WH-002',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-FUR-003',
-    name: 'Cocktail High-Boy Standing Bar Tables',
-    sku: 'FUR-CT03',
-    category: 'Accessories',
-    quantityTotal: 30,
-    quantityAvailable: 30,
-    status: 'In Stock',
-    location: 'WH-002 Staging Bay 3',
-    price: 2500,
-    rentalPrice: 250,
-    warehouseId: 'WH-002',
-    createdAt: new Date().toISOString()
-  },
-
-  // Catering & Buffet Fixtures
-  {
-    id: 'INV-CAT-001',
-    name: 'Roll-Top Stainless Steel Chafing Dish 9L',
-    sku: 'CAT-CD01',
-    category: 'Accessories',
-    quantityTotal: 40,
-    quantityAvailable: 40,
-    status: 'In Stock',
-    location: 'WH-004 Rack 1',
-    price: 3200,
-    rentalPrice: 400,
-    warehouseId: 'WH-004',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-CAT-002',
-    name: 'Commercial 100-Cup Electric Coffee Urn',
-    sku: 'CAT-CU02',
-    category: 'Accessories',
-    quantityTotal: 8,
-    quantityAvailable: 8,
-    status: 'In Stock',
-    location: 'WH-004 Rack 2',
-    price: 7500,
-    rentalPrice: 850,
-    warehouseId: 'WH-004',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'INV-CAT-003',
-    name: '4-Tier Commercial Chocolate Fondue Fountain',
-    sku: 'CAT-CF03',
-    category: 'Accessories',
-    quantityTotal: 4,
-    quantityAvailable: 4,
-    status: 'In Stock',
-    location: 'WH-004 Rack 3',
-    price: 16500,
-    rentalPrice: 2500,
-    warehouseId: 'WH-004',
-    createdAt: new Date().toISOString()
-  }
-];
-
-const DEFAULT_TRANSMITTALS: Transmittal[] = [
-  {
-    id: 'TX-SAMPLE-001',
-    transmittalNo: 'TX-2026-0825-01',
-    handler: 'Ricardo Santos',
-    rentee: 'Ayala Land Corporate Summit (c/o Ms. Karen Santos)',
-    address: 'Grand Imperial Ballroom, Madigun Hotel',
-    dateCheckout: '2026-08-25T09:00:00.000Z',
-    dateCheckin: '2026-08-25T18:00:00.000Z',
-    status: 'On Going',
-    notes: 'HOURLY HALL RENTAL (9 Hours: 09:00 AM to 06:00 PM on 2026-08-25). 150 guests corporate conference.',
-    items: [
-      {
-        itemId: 'INV-HALL-001',
-        name: 'Grand Imperial Ballroom (9 hrs @ ₱25,000/hr: 09:00 AM - 06:00 PM)',
-        sku: 'VEN-GB01',
-        quantity: 1,
-        returnedQuantity: 0
-      },
-      {
-        itemId: 'INV-AV-001',
-        name: 'Line Array Active Sound System 5000W',
-        sku: 'AV-LA01',
-        quantity: 1,
-        returnedQuantity: 0
-      },
-      {
-        itemId: 'INV-AV-002',
-        name: 'Wireless UHF Quad Microphone Set',
-        sku: 'AV-WM02',
-        quantity: 2,
-        returnedQuantity: 0
-      }
-    ],
-    custodianSigned: true,
-    custodianSignedBy: 'Ricardo Santos',
-    custodianSignedAt: '2026-08-25',
-    createdAt: '2026-08-25T08:30:00.000Z'
-  }
-];
-
-// Initialize storage with defaults if not present or recover if empty
+// Initialize storage cleanly with default accounts
 export function initLocalStore(): void {
   if (typeof window === 'undefined') return;
 
@@ -555,45 +185,33 @@ export function initLocalStore(): void {
   if (currentUsers.length === 0) {
     setCollectionRaw('users', DEFAULT_USERS);
   } else {
-    const hasAdmin = currentUsers.some(u => u.employeeId === 'EMP-2026-001' || u.username.toUpperCase() === 'ADMIN');
-    if (!hasAdmin) {
-      currentUsers.unshift(DEFAULT_USERS[0]);
+    // Ensure all default users exist
+    let updated = false;
+    DEFAULT_USERS.forEach(defUser => {
+      if (!currentUsers.some(u => u.username?.toUpperCase() === defUser.username || u.employeeId === defUser.employeeId)) {
+        currentUsers.push(defUser);
+        updated = true;
+      }
+    });
+    if (updated) {
       setCollectionRaw('users', currentUsers);
     }
   }
 
-  const currentWarehouses = getCollectionRaw<Warehouse>('warehouses');
-  if (currentWarehouses.length === 0) {
-    setCollectionRaw('warehouses', DEFAULT_WAREHOUSES);
-  } else {
-    // Strip description if present
-    const cleaned = currentWarehouses.map(w => {
-      const { description, ...rest } = w;
-      return rest;
-    });
-    setCollectionRaw('warehouses', cleaned);
+  if (!localStorage.getItem(getStorageKey('warehouses'))) {
+    setCollectionRaw('warehouses', []);
   }
 
-  const currentCustodians = getCollectionRaw<Custodian>('custodians');
-  if (currentCustodians.length === 0) {
-    setCollectionRaw('custodians', DEFAULT_CUSTODIANS);
+  if (!localStorage.getItem(getStorageKey('custodians'))) {
+    setCollectionRaw('custodians', []);
   }
 
-  const currentInventory = getCollectionRaw<InventoryItem>('inventory');
-  if (currentInventory.length === 0) {
-    setCollectionRaw('inventory', DEFAULT_INVENTORY);
-  } else {
-    // Strip description if present
-    const cleaned = currentInventory.map(i => {
-      const { description, ...rest } = i;
-      return rest;
-    });
-    setCollectionRaw('inventory', cleaned);
+  if (!localStorage.getItem(getStorageKey('inventory'))) {
+    setCollectionRaw('inventory', []);
   }
 
-  const currentTransmittals = getCollectionRaw<Transmittal>('transmittals');
-  if (currentTransmittals.length === 0) {
-    setCollectionRaw('transmittals', DEFAULT_TRANSMITTALS);
+  if (!localStorage.getItem(getStorageKey('transmittals'))) {
+    setCollectionRaw('transmittals', []);
   }
 
   if (!localStorage.getItem(getStorageKey('deleted_logs'))) {
@@ -607,10 +225,10 @@ export function initLocalStore(): void {
 
 export function restoreDefaultSeedData(): void {
   setCollectionRaw('users', DEFAULT_USERS);
-  setCollectionRaw('warehouses', DEFAULT_WAREHOUSES);
-  setCollectionRaw('custodians', DEFAULT_CUSTODIANS);
-  setCollectionRaw('inventory', DEFAULT_INVENTORY);
-  setCollectionRaw('transmittals', DEFAULT_TRANSMITTALS);
+  setCollectionRaw('warehouses', []);
+  setCollectionRaw('custodians', []);
+  setCollectionRaw('inventory', []);
+  setCollectionRaw('transmittals', []);
   setCollectionRaw('deleted_logs', []);
   setCollectionRaw('audit_logs', []);
 }

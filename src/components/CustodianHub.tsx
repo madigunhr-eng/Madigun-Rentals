@@ -376,10 +376,6 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
       setRegError('Access Denied: Front Desk staff are not authorized to delete staff accounts.');
       return;
     }
-    if (userEmpId === 'EMP-2026-001' || userName.toUpperCase() === 'ADMIN') {
-      setRegError('The primary System Administrator account cannot be deleted or revoked.');
-      return;
-    }
     if (currentUser && userEmpId === currentUser.employeeId) {
       setRegError('You cannot delete your own active login credentials from the current session.');
       return;
@@ -1747,9 +1743,9 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
                                 </span>
                               </td>
                               <td className="py-3 px-4 text-right">
-                                {u.employeeId === 'EMP-2026-001' ? (
-                                  <span className="text-[9px] text-zinc-350 font-bold uppercase tracking-widest italic">
-                                    Primary Root
+                                {u.employeeId === currentUser?.employeeId ? (
+                                  <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest italic">
+                                    Active Session
                                   </span>
                                 ) : currentUser?.role !== 'Front Desk' ? (
                                   <button
@@ -1761,7 +1757,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
                                     Delete
                                   </button>
                                 ) : (
-                                  <span className="text-[9px] text-zinc-300 font-bold uppercase tracking-widest italic" title="Only the Primary Root account can delete staff profiles">
+                                  <span className="text-[9px] text-zinc-300 font-bold uppercase tracking-widest italic" title="Only administrators can delete staff profiles">
                                     Locked
                                   </span>
                                 )}

@@ -148,9 +148,8 @@ export default function App() {
 
   // Enforce role-based access limits
   const isFrontDesk = currentUser?.role === 'Front Desk' || currentUser?.role?.toLowerCase() === 'staff';
-  const isPrimaryRootAdmin = currentUser?.employeeId === 'EMP-2026-001' || 
-                             currentUser?.username?.toUpperCase() === 'ADMIN' || 
-                             currentUser?.email === 'madigunhotelevents@gmail.com';
+  const isPrimaryRootAdmin = currentUser?.role === 'Admin' || 
+                             currentUser?.role === 'Managing Director';
 
   useEffect(() => {
     if (currentUser && !isPrimaryRootAdmin && view === 'user-management') {

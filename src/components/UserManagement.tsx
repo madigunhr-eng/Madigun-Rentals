@@ -59,9 +59,8 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
   const [editPassword, setEditPassword] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  const isPrimaryRoot = currentUser?.employeeId === 'EMP-2026-001' || 
-                        currentUser?.username?.toUpperCase() === 'ADMIN' || 
-                        currentUser?.email === 'madigunhotelevents@gmail.com';
+  const isPrimaryRoot = currentUser?.role === 'Admin' || 
+                        currentUser?.role === 'Managing Director';
 
   // Listen to users collection
   useEffect(() => {
@@ -193,8 +192,8 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
 
   const handleDeleteUserRecord = async (user: UserProfile) => {
     if (!user.id) return;
-    if (user.employeeId === 'EMP-2026-001' || user.username.toUpperCase() === 'ADMIN') {
-      setErrorMsg('Cannot delete the primary root admin account.');
+    if (user.employeeId === currentUser?.employeeId || user.username === currentUser?.username) {
+      setErrorMsg('Cannot delete your own active administrator account.');
       setDeletingUser(null);
       return;
     }
@@ -699,7 +698,6 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
                       System Access Role
                     </label>
                     <select
-                      disabled={selectedProfileUser.employeeId === 'EMP-2026-001'}
                       value={editRole}
                       onChange={(e) => setEditRole(e.target.value as UserRole)}
                       className="w-full px-2 py-1.5 border border-zinc-300 text-xs font-bold bg-white text-zinc-950 focus:outline-none focus:border-zinc-900 font-mono disabled:bg-zinc-100 disabled:text-zinc-500"
@@ -715,7 +713,6 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
                       Account Status
                     </label>
                     <select
-                      disabled={selectedProfileUser.employeeId === 'EMP-2026-001'}
                       value={editStatus}
                       onChange={(e) => setEditStatus(e.target.value as any)}
                       className="w-full px-2 py-1.5 border border-zinc-300 text-xs font-bold bg-white text-zinc-950 focus:outline-none focus:border-zinc-900 font-mono disabled:bg-zinc-100 disabled:text-zinc-500"
@@ -743,7 +740,7 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
 
                 {/* Footer Controls */}
                 <div className="pt-4 border-t border-zinc-200 flex justify-between items-center gap-3">
-                  {selectedProfileUser.employeeId !== 'EMP-2026-001' && selectedProfileUser.username.toUpperCase() !== 'ADMIN' && (
+                  {selectedProfileUser.id !== currentUser?.id && selectedProfileUser.employeeId !== currentUser?.employeeId && (
                     <button
                       type="button"
                       onClick={() => setDeletingUser(selectedProfileUser)}

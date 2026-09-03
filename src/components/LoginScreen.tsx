@@ -40,8 +40,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
     }
 
-    const cleanInput = username.trim().toLowerCase();
-
     try {
       setIsAuthenticating(true);
       setErrorMsg(null);
@@ -49,23 +47,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
       let usersList = localStore.getCollection<any>('users');
 
-      // Check if bypass email or username is typed
-      if (cleanInput === 'madigunhotelevents@gmail.com' || cleanInput === 'madigunhotelevents' || cleanInput === 'admin') {
-        const primaryAdminDoc = usersList.find((u: any) => u.employeeId === 'EMP-2026-001' || u.username?.toUpperCase() === 'ADMIN');
-        
-        let finalProfile: UserSession = {
-          username: primaryAdminDoc?.username || 'ADMIN',
-          employeeId: 'EMP-2026-001',
-          role: 'Admin',
-          status: 'Approved',
-          fullName: primaryAdminDoc?.fullName || 'Primary Root Account',
-          phone: primaryAdminDoc?.phone || '+63 900 000 0000',
-          email: primaryAdminDoc?.email || 'madigunhotelevents@gmail.com',
-          department: primaryAdminDoc?.department || 'Executive Administration',
-          bio: primaryAdminDoc?.bio || 'Primary root administrator account with unrestricted system control.'
-        };
-
-        onLogin(finalProfile);
+      if (usersList.length === 0) {
+        setErrorMsg('No accounts exist in the database. Please click the Register tab above to create your primary administrator account.');
         setIsAuthenticating(false);
         return;
       }
@@ -82,8 +65,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         return;
       }
 
-      // Check Password (or bypass if using root credentials)
-      if (matchedUser.password !== password && password !== 'MADIGUN2026') {
+      // Check Password
+      if (matchedUser.password !== password) {
         setErrorMsg('Access Denied: Incorrect password.');
         setIsAuthenticating(false);
         return;
@@ -105,7 +88,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       // All checks passed! Start Session
       onLogin({
         username: matchedUser.username,
-        employeeId: matchedUser.employeeId || 'EMP-TEMP',
+        employeeId: matchedUser.employeeId || 'EMP-001',
         role: matchedUser.role || 'Front Desk',
         status: matchedUser.status || 'Approved',
         fullName: matchedUser.fullName || '',
@@ -117,21 +100,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
     } catch (err: any) {
       console.warn("Authentication error in LoginScreen:", err);
-      // Offline fallback for standard root accounts
-      if (cleanInput === 'admin' && (password === 'MADIGUN2026' || password === 'admin' || password === 'Password123!')) {
-        onLogin({
-          username: 'ADMIN',
-          employeeId: 'EMP-2026-001',
-          role: 'Admin',
-          status: 'Approved',
-          fullName: 'Primary Root Account',
-          phone: '+63 900 000 0000',
-          email: 'madigunhotelevents@gmail.com',
-          department: 'Executive Administration',
-          bio: 'Primary root administrator account with unrestricted system control.'
-        });
-        return;
-      }
       setErrorMsg(err.message || 'System authentication error.');
     } finally {
       setIsAuthenticating(false);
@@ -151,6 +119,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       setSuccessMsg(null);
 
       const usersList = localStore.getCollection<any>('users');
+      const isFirstUser = usersList.length === 0;
 
       const cleanNewUser = regUsername.trim().toLowerCase();
       const exists = usersList.some((u: any) => (u.username || '').toLowerCase() === cleanNewUser || (regEmail && u.email?.toLowerCase() === regEmail.trim().toLowerCase()));
@@ -162,22 +131,44 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       }
 
       const generatedEmpId = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
+      const assignedRole: UserRole | 'Pending' = isFirstUser ? 'Admin' : 'Pending';
+      const assignedStatus: 'Approved' | 'Pending' = isFirstUser ? 'Approved' : 'Pending';
 
-      await localStore.addItem('users', {
+      const newUserDoc = {
         username: regUsername.toUpperCase().trim(),
         password: regPassword,
-        role: 'Pending',
-        status: 'Pending',
+        role: assignedRole,
+        status: assignedStatus,
         employeeId: generatedEmpId,
         fullName: regFullName.trim(),
         email: regEmail.trim(),
         phone: regPhone.trim(),
-        department: regDepartment.trim() || 'Operations',
-        bio: 'Registered user account awaiting Primary System Administrator approval.',
+        department: regDepartment.trim() || (isFirstUser ? 'Executive Administration' : 'Operations'),
+        bio: isFirstUser ? 'Primary root organization administrator.' : 'Registered user account awaiting Primary Administrator approval.',
         createdAt: new Date().toISOString()
-      });
+      };
 
-      setSuccessMsg(`Registration submitted successfully! Your account (${generatedEmpId}) is PENDING APPROVAL. The Primary System Administrator must approve your account and assign your role before you can log in.`);
+      await localStore.addItem('users', newUserDoc);
+
+      if (isFirstUser) {
+        setSuccessMsg(`Primary Administrator account created successfully! Signing in...`);
+        setTimeout(() => {
+          onLogin({
+            username: newUserDoc.username,
+            employeeId: newUserDoc.employeeId,
+            role: 'Admin',
+            status: 'Approved',
+            fullName: newUserDoc.fullName,
+            email: newUserDoc.email,
+            phone: newUserDoc.phone,
+            department: newUserDoc.department,
+            bio: newUserDoc.bio
+          });
+        }, 600);
+        return;
+      }
+
+      setSuccessMsg(`Registration submitted successfully! Your account (${generatedEmpId}) is PENDING APPROVAL. The Primary Administrator must approve your account before you can log in.`);
       setUsername(regUsername.toUpperCase().trim());
       setPassword('');
       setRegUsername('');

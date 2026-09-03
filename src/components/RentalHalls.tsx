@@ -420,7 +420,7 @@ export default function RentalHalls({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            {(currentUser?.role === 'Admin' || currentUser?.employeeId === 'EMP-2026-001') && (
+            {(currentUser?.role === 'Admin' || currentUser?.role === 'Managing Director') && (
               <button
                 id="btn-add-event-venue"
                 onClick={() => {
