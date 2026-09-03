@@ -540,7 +540,7 @@ export default function RoomInventories({ items, onUpdateItem, onDeleteItem, cur
             className="w-full pl-9 pr-4 py-2 border border-zinc-200 text-xs font-semibold uppercase tracking-wider bg-zinc-50 focus:bg-white focus:outline-none focus:border-zinc-900 transition-all text-zinc-800 placeholder-zinc-400"
           />
         </div>
-        <div className="flex gap-4 text-xs uppercase tracking-wider font-bold text-zinc-500 bg-zinc-50 px-4 py-2 border border-zinc-200 shrink-0">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs uppercase tracking-wider font-bold text-zinc-500 bg-zinc-50 px-4 py-2 border border-zinc-200 shrink-0 w-full md:w-auto">
           <div>
             Warehouses: <span className="text-zinc-900 font-mono font-black">{filteredWarehouses.length}</span>
           </div>
@@ -591,7 +591,7 @@ export default function RoomInventories({ items, onUpdateItem, onDeleteItem, cur
                 {/* Warehouse Header Bar */}
                 <div 
                   onClick={() => toggleWarehouseExpand(wh.id)}
-                  className="px-6 py-4 bg-zinc-50 border-b border-zinc-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 cursor-pointer hover:bg-zinc-100/70 transition-colors"
+                  className="px-4 sm:px-6 py-4 bg-zinc-50 border-b border-zinc-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 cursor-pointer hover:bg-zinc-100/70 transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
                     <MapPin className="h-4 w-4 text-zinc-500 shrink-0" />

@@ -28,7 +28,8 @@ import {
 } from 'lucide-react';
 import { localStore } from '../localStore';
 import { InventoryItem, Custodian, AuditLog, UserSession } from '../types';
-import { restoreBackupToFirestore } from '../firebaseSync';
+import { restoreBackupToFirestore, syncSetSystemLogo } from '../firebaseSync';
+import { optimizeLogoImage } from '../utils/imageOptimizer';
 
 interface CustodianHubProps {
   inventory: InventoryItem[];
@@ -412,13 +413,13 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
     }
   };
 
-  // Branding Logo Handlers
+  // Branding Logo Handlers (Embed permanently into Cloud Database)
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setLogoError('Please select a valid image file (PNG/JPEG).');
+      setLogoError('Please select a valid image file (PNG/JPEG/SVG).');
       return;
     }
 
@@ -427,45 +428,37 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
     setLogoUploading(true);
 
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const base64String = reader.result as string;
-          
-          // Cache in localStorage
-          localStorage.setItem('madigun_custom_logo', base64String);
-          window.dispatchEvent(new Event('madigun_logo_updated'));
+      // Optimize image to high-fidelity, compact format for rapid cloud sync and retina displays
+      const optimizedBase64 = await optimizeLogoImage(file, 512, 0.92);
+      
+      // Embed permanently into Cloud Firestore database ('settings/logo')
+      await syncSetSystemLogo(optimizedBase64);
 
-          setLogoSuccess('Logo updated successfully!');
-        } catch (dbErr: any) {
-          setLogoError('Logo update failed: ' + dbErr.message);
-        } finally {
-          setLogoUploading(false);
-        }
-      };
-      reader.onerror = () => {
-        setLogoError('Failed to read image file.');
-        setLogoUploading(false);
-      };
-      reader.readAsDataURL(file);
+      setLogoSuccess('Official System Logo permanently embedded in the Cloud Database! This logo is now authoritative across all devices and printouts.');
     } catch (err: any) {
-      setLogoError(err.message || 'Failed to upload logo.');
+      console.error('Failed to embed logo in database:', err);
+      setLogoError('Database logo update failed: ' + (err.message || 'Unknown error'));
+    } finally {
       setLogoUploading(false);
+      // Reset input value so same file can be re-selected if desired
+      e.target.value = '';
     }
   };
 
   const handleResetLogo = async () => {
+    if (!window.confirm('Are you sure you want to remove the permanent official system logo and revert to the default insignia?')) {
+      return;
+    }
+
     setLogoError('');
     setLogoSuccess('');
     setLogoUploading(true);
 
     try {
-      localStorage.removeItem('madigun_custom_logo');
-      window.dispatchEvent(new Event('madigun_logo_updated'));
-
-      setLogoSuccess('Logo reverted to default.');
+      await syncSetSystemLogo(null);
+      setLogoSuccess('Permanent logo removed from Cloud Database. System reverted to default insignia.');
     } catch (err: any) {
-      setLogoError(err.message || 'Failed to reset logo.');
+      setLogoError(err.message || 'Failed to reset logo in database.');
     } finally {
       setLogoUploading(false);
     }
@@ -665,10 +658,10 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
       )}
 
       {/* Tabs Menu */}
-      <div className="border-b border-zinc-200 bg-white p-2 flex gap-2">
+      <div className="border-b border-zinc-200 bg-white p-2 flex gap-2 overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('audit')}
-          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer ${
+          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'audit'
               ? 'bg-zinc-900 text-white border-zinc-900'
               : 'bg-white text-zinc-500 hover:text-zinc-900 hover:border-zinc-300 border-zinc-200'
@@ -678,7 +671,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
         </button>
         <button
           onClick={() => setActiveTab('assignments')}
-          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer ${
+          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'assignments'
               ? 'bg-zinc-900 text-white border-zinc-900'
               : 'bg-white text-zinc-500 hover:text-zinc-900 hover:border-zinc-300 border-zinc-200'
@@ -688,7 +681,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
         </button>
         <button
           onClick={() => setActiveTab('custodians')}
-          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer ${
+          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'custodians'
               ? 'bg-zinc-900 text-white border-zinc-900'
               : 'bg-white text-zinc-500 hover:text-zinc-900 hover:border-zinc-300 border-zinc-200'
@@ -698,7 +691,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer ${
+          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'history'
               ? 'bg-zinc-900 text-white border-zinc-900'
               : 'bg-white text-zinc-500 hover:text-zinc-900 hover:border-zinc-300 border-zinc-200'
@@ -708,7 +701,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
         </button>
         <button
           onClick={() => setActiveTab('backup')}
-          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer ${
+          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'backup'
               ? 'bg-zinc-900 text-white border-zinc-900'
               : 'bg-white text-zinc-500 hover:text-zinc-900 hover:border-zinc-300 border-zinc-200'
@@ -718,7 +711,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
         </button>
         <button
           onClick={() => setActiveTab('staff')}
-          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer ${
+          className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'staff'
               ? 'bg-zinc-900 text-white border-zinc-900'
               : 'bg-white text-zinc-500 hover:text-zinc-900 hover:border-zinc-300 border-zinc-200'
@@ -736,14 +729,14 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.15 }}
-          className="bg-white border border-zinc-200 p-6"
+          className="bg-white border border-zinc-200 p-4 sm:p-6"
         >
           
           {/* TAB 1: PHYSICAL RECONCILIATION */}
           {activeTab === 'audit' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
               {/* Audit Form */}
-              <div className="lg:col-span-1 space-y-5 border-r border-zinc-100 lg:pr-8">
+              <div className="lg:col-span-1 space-y-5 border-b lg:border-b-0 lg:border-r border-zinc-100 pb-6 lg:pb-0 lg:pr-8">
                 <div>
                   <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest flex items-center gap-2">
                     <ClipboardCheck className="h-4 w-4" />
@@ -1239,9 +1232,9 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
 
           {/* TAB 5: BACKUP & RESTORE */}
           {activeTab === 'backup' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
               {/* Left Column: DB Status & Local Record Counts */}
-              <div className="lg:col-span-1 border-r border-zinc-100 lg:pr-8 space-y-6">
+              <div className="lg:col-span-1 border-b lg:border-b-0 lg:border-r border-zinc-100 pb-6 lg:pb-0 lg:pr-8 space-y-6">
                 <div>
                   <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest flex items-center gap-2">
                     <Database className="h-4 w-4" />
@@ -1581,55 +1574,62 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
                     </button>
                   </form>
 
-                  {/* BRANDING CUSTOMIZATION SECTION */}
+                  {/* BRANDING CUSTOMIZATION SECTION (PERMANENT OFFICIAL LOGO) */}
                   <div className="pt-6 mt-6 border-t border-zinc-200 space-y-4">
-                    <div>
+                    <div className="flex items-center justify-between">
                       <h3 className="text-sm font-black text-zinc-900 uppercase tracking-widest flex items-center gap-2">
                         <Upload className="h-4 w-4 text-zinc-800" />
-                        System Brand Logo
+                        Official System Logo
                       </h3>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 bg-zinc-900 text-white border border-zinc-800">
+                        Cloud Database Embedded
+                      </span>
                     </div>
 
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">
+                      Upload your hotel/brand logo. Once saved, this logo is <span className="font-bold text-zinc-800">permanently embedded in the Cloud Database</span> and serves as the official system emblem across all phones, tablets, laptops, and generated PDF manifests.
+                    </p>
+
                     {logoError && (
-                      <div className="p-3 bg-red-50 border border-red-200 text-red-750 text-[10px] font-bold uppercase tracking-wider">
+                      <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-[10px] font-bold uppercase tracking-wider">
                         {logoError}
                       </div>
                     )}
 
                     {logoSuccess && (
-                      <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-850 text-[10px] font-bold uppercase tracking-wider">
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
                         {logoSuccess}
                       </div>
                     )}
 
                     <div className="space-y-4">
                       {/* Logo Preview */}
-                      <div className="flex items-center gap-4 bg-zinc-50 border border-zinc-200 p-3">
-                        <div className="w-16 h-16 bg-white border border-zinc-200 rounded flex items-center justify-center p-2 shrink-0">
+                      <div className="flex items-center gap-4 bg-zinc-50 border border-zinc-200 p-3.5">
+                        <div className="w-16 h-16 bg-white border border-zinc-200 flex items-center justify-center p-2 shrink-0">
                           {currentCustomLogo ? (
                             <img 
                               src={currentCustomLogo} 
-                              alt="Branded Logo Preview" 
+                              alt="Official Permanent Logo" 
                               className="max-w-full max-h-full object-contain"
                               referrerPolicy="no-referrer"
                             />
                           ) : (
-                            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Default</div>
+                            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Default Insignia</div>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold uppercase text-zinc-700 leading-none">Logo Status</p>
-                          <p className="text-[9px] text-zinc-500 font-mono mt-1">
-                            {currentCustomLogo ? 'Custom Upload Active' : 'Default Monogram SVG'}
+                          <p className="text-[10px] font-bold uppercase text-zinc-700 leading-none">Database Status</p>
+                          <p className="text-[9px] text-zinc-600 font-mono mt-1">
+                            {currentCustomLogo ? 'Official Permanent Logo Stored' : 'Using Default System Monogram'}
                           </p>
                           {currentCustomLogo && (
                             <button
                               type="button"
                               onClick={handleResetLogo}
                               disabled={logoUploading}
-                              className="mt-1.5 text-[9px] font-bold text-red-650 hover:text-red-800 uppercase tracking-wider transition-colors cursor-pointer block underline"
+                              className="mt-2 text-[9px] font-bold text-red-600 hover:text-red-800 uppercase tracking-wider transition-colors cursor-pointer block underline"
                             >
-                              Reset to Default
+                              Reset to Default Monogram
                             </button>
                           )}
                         </div>
@@ -1640,23 +1640,23 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
                         <input
                           type="file"
                           id="system-logo-upload"
-                          accept="image/png, image/jpeg, image/jpg"
+                          accept="image/png, image/jpeg, image/jpg, image/svg+xml"
                           onChange={handleLogoUpload}
                           disabled={logoUploading}
                           className="hidden"
                         />
                         <label
                           htmlFor="system-logo-upload"
-                          className={`w-full py-3 px-4 border border-dashed border-zinc-300 hover:border-zinc-900 bg-white hover:bg-zinc-50 text-zinc-600 hover:text-zinc-900 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          className={`w-full py-3.5 px-4 border border-dashed border-zinc-300 hover:border-zinc-900 bg-white hover:bg-zinc-50 text-zinc-700 hover:text-zinc-900 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
                             logoUploading ? 'opacity-50 pointer-events-none' : ''
                           }`}
                         >
-                          <Upload className="h-4 w-4 text-zinc-400" />
+                          <Upload className="h-4 w-4 text-zinc-500" />
                           <span className="text-[10px] font-bold uppercase tracking-wider text-center">
-                            {logoUploading ? 'Processing File...' : 'Upload Clean Transparent PNG / JPEG'}
+                            {logoUploading ? 'Optimizing & Embedding into Database...' : 'Upload Official Logo (PNG / JPEG / SVG)'}
                           </span>
                           <span className="text-[8px] text-zinc-400 uppercase tracking-wider font-mono">
-                            Max 1MB recommended
+                            Auto-optimized & permanently embedded in Firestore
                           </span>
                         </label>
                       </div>

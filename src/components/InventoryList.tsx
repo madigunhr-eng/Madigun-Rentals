@@ -412,13 +412,13 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
 
       {/* Grid of items */}
       {filteredItems.length === 0 ? (
-        <div className="bg-white border border-zinc-200 p-12 text-center text-zinc-400">
+        <div className="bg-white border border-zinc-200 p-8 sm:p-12 text-center text-zinc-400">
           <Search className="h-8 w-8 text-zinc-300 mx-auto mb-3" />
           <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">No matching assets found</p>
           <p className="text-[11px] text-zinc-400 mt-1 uppercase tracking-wider">Try adjusting your filters or search term.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {filteredItems.map((item) => {
             const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
             const isOutOfStock = !isNoQty && item.quantityAvailable === 0;
@@ -435,7 +435,7 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
                   setQuickQty(1);
                   setErrorMsg('');
                 }}
-                className={`bg-white border p-6 cursor-pointer flex flex-col justify-between hover:border-zinc-900 relative group transition-all ${
+                className={`bg-white border p-4 sm:p-5 cursor-pointer flex flex-col justify-between hover:border-zinc-900 relative group transition-all ${
                   isNoQty ? 'border-amber-300 bg-amber-50/20' : 'border-zinc-200'
                 }`}
               >

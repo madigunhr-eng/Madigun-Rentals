@@ -21,7 +21,10 @@ import {
   Users,
   Cloud,
   HardDrive,
-  Zap
+  Zap,
+  Menu,
+  TrendingUp,
+  Building2
 } from 'lucide-react';
 
 import { localStore } from './localStore';
@@ -79,6 +82,7 @@ export default function App() {
   const [isFirestoreConnected, setIsFirestoreConnected] = useState(false);
   const [isDriveConnectedState, setIsDriveConnectedState] = useState(isDriveConnected());
   const [isCloudSyncModalOpen, setIsCloudSyncModalOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const handleLogin = (session: UserSession) => {
     setCurrentUser(session);
@@ -571,26 +575,30 @@ export default function App() {
       
       {/* Geometric Balance Top Navigation Bar */}
       <header className="border-b border-zinc-200 bg-white shrink-0 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             
             {/* Logo and Name */}
-            <div className="flex items-center gap-3">
-              <MadigunLogo showText={false} />
-              <div>
-                <span className="text-[9px] font-bold font-mono text-zinc-400 tracking-widest block uppercase leading-none">HOTEL & EVENTS</span>
-                <span className="font-black font-display text-zinc-900 tracking-tight text-base uppercase leading-none mt-1 block">Madigun Rentals</span>
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <MadigunLogo size="sm" showText={false} />
+              <div className="min-w-0">
+                <span className="text-[8px] sm:text-[9px] font-bold font-mono text-zinc-400 tracking-widest block uppercase leading-none truncate">
+                  HOTEL & EVENTS
+                </span>
+                <span className="font-black font-display text-zinc-900 tracking-tight text-sm sm:text-base uppercase leading-none mt-1 block truncate">
+                  Madigun Rentals
+                </span>
               </div>
             </div>
 
-            {/* Current Timestamp / Meta Indicator, Firestore & Drive Sync, and Active User Details */}
-            <div className="flex items-center gap-3 sm:gap-5">
+            {/* Actions & Navigation Controls */}
+            <div className="flex items-center gap-2 sm:gap-4">
               
               {/* Cloud & Drive Storage Center Button */}
               <button
                 id="btn-open-cloud-sync-modal"
                 onClick={() => setIsCloudSyncModalOpen(true)}
-                className="inline-flex items-center gap-2 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 transition-colors cursor-pointer text-left"
+                className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 transition-colors cursor-pointer text-left"
                 title="Open Cloud & Google Drive Storage Center"
               >
                 <div className="flex items-center gap-1.5">
@@ -598,17 +606,18 @@ export default function App() {
                     <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isFirestoreConnected ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
                     <span className={`relative inline-flex rounded-full h-2 w-2 ${isFirestoreConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
                   </span>
-                  <div className="flex flex-col">
+                  <div className="hidden xs:flex flex-col">
                     <span className="text-[8px] font-black uppercase tracking-widest text-zinc-800 leading-none">
                       Cloud Sync
                     </span>
                     <span className="text-[7.5px] font-mono text-zinc-500 uppercase tracking-tight mt-0.5 leading-none">
-                      {isDriveConnectedState ? 'Drive: Connected' : 'Drive: Ready'}
+                      {isDriveConnectedState ? 'Drive: Active' : 'Drive: Ready'}
                     </span>
                   </div>
                 </div>
               </button>
 
+              {/* Desktop System Live Feed Clock */}
               <div className="hidden lg:flex flex-col items-end text-right">
                 <span className="text-[9px] font-bold font-mono text-zinc-400 uppercase tracking-widest flex items-center gap-1.5">
                   <Clock className="h-3 w-3 text-zinc-500" />
@@ -628,11 +637,12 @@ export default function App() {
                 </span>
               </div>
 
+              {/* Desktop User Info & Profile / Logout */}
               {currentUser && (
-                <div className="flex items-center gap-3 sm:gap-4 border-l border-zinc-200 pl-3 sm:pl-4">
+                <div className="hidden md:flex items-center gap-3 sm:gap-4 border-l border-zinc-200 pl-3 sm:pl-4">
                   <div className="flex flex-col items-end text-right">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-900 leading-none">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-900 leading-none max-w-[130px] truncate">
                         {currentUser.fullName || currentUser.username}
                       </span>
                       <span className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 border leading-none ${
@@ -670,15 +680,258 @@ export default function App() {
                   </button>
                 </div>
               )}
+
+              {/* Mobile Hamburger Toggle Button */}
+              <button
+                id="btn-mobile-nav-toggle"
+                onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+                className="md:hidden p-2 text-zinc-800 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 transition-colors cursor-pointer flex items-center justify-center"
+                aria-label="Toggle navigation menu"
+              >
+                {isMobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer (Dropdown Overlay) */}
+        <AnimatePresence>
+          {isMobileNavOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden border-t border-zinc-200 bg-white shadow-xl overflow-hidden"
+            >
+              <div className="px-4 py-4 space-y-4 max-h-[80vh] overflow-y-auto">
+                {/* Mobile User Profile Section */}
+                {currentUser && (
+                  <div className="p-3.5 bg-zinc-50 border border-zinc-200 flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <span className="text-xs font-black uppercase tracking-wider text-zinc-900 block truncate">
+                          {currentUser.fullName || currentUser.username}
+                        </span>
+                        <span className="text-[10px] font-mono text-zinc-500 mt-0.5 block">
+                          ID: {currentUser.employeeId || 'N/A'} • @{currentUser.username}
+                        </span>
+                      </div>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 border ${
+                        currentUser.role === 'Admin'
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-amber-100 text-amber-900 border-amber-300'
+                      }`}>
+                        {currentUser.role}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-zinc-200">
+                      {currentUser.employeeId !== 'EMP-2026-001' && (
+                        <button
+                          onClick={() => {
+                            setIsProfileModalOpen(true);
+                            setIsMobileNavOpen(false);
+                          }}
+                          className="flex-1 py-1.5 px-2.5 text-[10px] font-bold uppercase tracking-wider text-zinc-800 bg-white border border-zinc-200 hover:bg-zinc-100 transition-colors text-center"
+                        >
+                          Edit Profile
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          localStorage.removeItem('madigun_user_session');
+                          setCurrentUser(null);
+                        }}
+                        className="flex-1 py-1.5 px-2.5 text-[10px] font-bold uppercase tracking-wider text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-center"
+                      >
+                        Log Out
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Mobile Navigation Links */}
+                <div className="space-y-1">
+                  {!isFrontDesk && (
+                    <button
+                      onClick={() => {
+                        setView('dashboard');
+                        setIsMobileNavOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                        view === 'dashboard'
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <LayoutDashboard className="h-4 w-4" />
+                      Overview Dashboard
+                    </button>
+                  )}
+
+                  {!isFrontDesk && (
+                    <button
+                      onClick={() => {
+                        setView('revenue');
+                        setIsMobileNavOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                        view === 'revenue'
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <TrendingUp className="h-4 w-4" />
+                      Revenue Analytics
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setView('rental-halls');
+                      setIsMobileNavOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                      view === 'rental-halls'
+                        ? 'bg-zinc-900 text-white border-zinc-900'
+                        : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Rental Halls & Event Venues
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setView('inventory');
+                      setIsMobileNavOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                      view === 'inventory'
+                        ? 'bg-zinc-900 text-white border-zinc-900'
+                        : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <Package className="h-4 w-4" />
+                    Rental Inventory Items
+                  </button>
+
+                  {!isFrontDesk && (
+                    <button
+                      onClick={() => {
+                        setView('warehouse');
+                        setIsMobileNavOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                        view === 'warehouse'
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <HardDrive className="h-4 w-4" />
+                      Warehouse Locations
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setView('transmittals');
+                      setIsMobileNavOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                      view === 'transmittals' || view === 'create-transmittal'
+                        ? 'bg-zinc-900 text-white border-zinc-900'
+                        : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Send className="h-4 w-4" />
+                      Transmittals
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-zinc-200 text-zinc-800">
+                      {transmittals.length}
+                    </span>
+                  </button>
+
+                  {!isFrontDesk && (
+                    <button
+                      onClick={() => {
+                        setView('custodian-hub');
+                        setIsMobileNavOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                        view === 'custodian-hub'
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <Database className="h-4 w-4" />
+                      Custodian Hub & System Config
+                    </button>
+                  )}
+
+                  {isPrimaryRootAdmin && (
+                    <button
+                      onClick={() => {
+                        setView('user-management');
+                        setIsMobileNavOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                        view === 'user-management'
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <Users className="h-4 w-4 text-amber-500" />
+                        Personnel & Logo Branding
+                      </span>
+                      {pendingUsersCount > 0 && (
+                        <span className="px-2 py-0.5 text-[9px] font-black bg-amber-400 text-zinc-950 border border-amber-300 font-mono animate-pulse">
+                          {pendingUsersCount} PENDING
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {!isFrontDesk && (
+                    <button
+                      onClick={() => {
+                        setView('deleted-logs');
+                        setIsMobileNavOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                        view === 'deleted-logs'
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <FileText className="h-4 w-4" />
+                      Audit Deleted Logs
+                    </button>
+                  )}
+                </div>
+
+                {/* Mobile Manila Clock & Status */}
+                <div className="pt-3 border-t border-zinc-200 flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                  <span>Manila (GMT+8):</span>
+                  <span>
+                    {currentTime.toLocaleTimeString('en-US', { 
+                      timeZone: 'Asia/Manila', 
+                      hour12: false 
+                    })}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
-        {/* Navigation Tabs (Geometric Balance style) */}
+        {/* Horizontal Navigation Tabs (Visible on all screens, smooth scrolling) */}
         <div className="border-t border-zinc-100 bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
             <div className="overflow-x-auto whitespace-nowrap scrollbar-none w-full">
-              <nav className="flex gap-6 text-xs font-semibold uppercase tracking-widest text-zinc-400 min-w-max" aria-label="Tabs">
+              <nav className="flex gap-4 sm:gap-6 text-xs font-semibold uppercase tracking-widest text-zinc-400 min-w-max" aria-label="Tabs">
               {!isFrontDesk && (
                 <button
                   id="tab-dashboard"
@@ -811,7 +1064,7 @@ export default function App() {
     </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         
         {/* Loading overlay if database is loading */}
         {loading && inventory.length === 0 ? (

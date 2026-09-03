@@ -196,7 +196,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="relative w-full max-w-md bg-white border border-zinc-200 shadow-xl p-8 z-10 my-6"
+        className="relative w-full max-w-md bg-white border border-zinc-200 shadow-xl p-6 sm:p-8 z-10 my-4 sm:my-6"
       >
         
         {/* Crest Logo Header */}

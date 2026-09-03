@@ -6,7 +6,8 @@ import {
   updateDoc, 
   deleteDoc, 
   writeBatch, 
-  getDocs 
+  getDocs,
+  getDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { localStore } from './localStore';
@@ -103,7 +104,7 @@ export function initFirestoreSync(): () => void {
     }
   });
 
-  // Also listen for settings/logo
+  // Also listen for settings/logo (Official System Logo embedded permanently in Firestore)
   try {
     const logoDocRef = doc(db, 'settings', 'logo');
     const unsubLogo = onSnapshot(logoDocRef, (docSnap) => {
@@ -112,6 +113,20 @@ export function initFirestoreSync(): () => void {
         if (data && data.base64) {
           localStorage.setItem('madigun_custom_logo', data.base64);
           window.dispatchEvent(new Event('madigun_logo_updated'));
+        }
+      } else {
+        // If Firestore doesn't have the logo yet, but localStorage already has one saved,
+        // automatically push and embed it permanently in the Cloud database!
+        const existingLocal = localStorage.getItem('madigun_custom_logo');
+        if (existingLocal && existingLocal.startsWith('data:image')) {
+          setDoc(logoDocRef, {
+            id: 'logo',
+            base64: existingLocal,
+            updatedAt: new Date().toISOString(),
+            isPermanentOfficialLogo: true
+          }, { merge: true }).catch(err => {
+            console.warn("Notice: Auto-embed local logo to Firestore deferred:", err.message);
+          });
         }
       }
     }, (err) => {
@@ -129,6 +144,49 @@ export function initFirestoreSync(): () => void {
       } catch (e) {}
     });
   };
+}
+
+/**
+ * Embeds and permanently saves the system brand logo into Cloud Firestore database ('settings/logo').
+ * Propagates in real-time to all connected devices, sessions, and local storage caches.
+ */
+export async function syncSetSystemLogo(base64: string | null): Promise<boolean> {
+  const logoDocRef = doc(db, 'settings', 'logo');
+  if (base64) {
+    await setDoc(logoDocRef, {
+      id: 'logo',
+      base64: base64,
+      updatedAt: new Date().toISOString(),
+      isPermanentOfficialLogo: true
+    }, { merge: true });
+    localStorage.setItem('madigun_custom_logo', base64);
+  } else {
+    await deleteDoc(logoDocRef);
+    localStorage.removeItem('madigun_custom_logo');
+  }
+  window.dispatchEvent(new Event('madigun_logo_updated'));
+  return true;
+}
+
+/**
+ * Directly queries Firestore for the official system logo immediately.
+ */
+export async function fetchSystemLogoFromFirestore(): Promise<string | null> {
+  try {
+    const logoDocRef = doc(db, 'settings', 'logo');
+    const snap = await getDoc(logoDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && data.base64) {
+        localStorage.setItem('madigun_custom_logo', data.base64);
+        window.dispatchEvent(new Event('madigun_logo_updated'));
+        return data.base64;
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not query logo from Firestore:", err.message);
+  }
+  return localStorage.getItem('madigun_custom_logo');
 }
 
 /**

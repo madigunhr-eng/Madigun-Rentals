@@ -553,7 +553,7 @@ export default function RentalHalls({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {halls.map((hall) => {
             const rate = Number(hall.rentalPrice || 0);
             const ongoingTx = getOngoingBookingForVenue(hall);
@@ -562,7 +562,7 @@ export default function RentalHalls({
               <motion.div
                 key={hall.id}
                 whileHover={{ y: -2 }}
-                className={`bg-white border ${ongoingTx ? 'border-amber-400 bg-amber-50/20' : 'border-zinc-200 hover:border-zinc-900'} p-6 flex flex-col justify-between transition-all relative group shadow-xs`}
+                className={`bg-white border ${ongoingTx ? 'border-amber-400 bg-amber-50/20' : 'border-zinc-200 hover:border-zinc-900'} p-4 sm:p-6 flex flex-col justify-between transition-all relative group shadow-xs`}
               >
                 <div>
                   <div className="flex justify-between items-start gap-2">

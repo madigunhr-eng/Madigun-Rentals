@@ -20,14 +20,14 @@ const StatCard = ({ title, value, icon: Icon, color }: any) => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
-    className="bg-white border border-zinc-200 p-6 relative overflow-hidden"
+    className="bg-white border border-zinc-200 p-4 sm:p-6 relative overflow-hidden"
   >
     <div className="flex justify-between items-start">
       <div>
         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">{title}</span>
-        <h3 className="text-3xl font-extrabold font-display text-zinc-900 tracking-tight">{value}</h3>
+        <h3 className="text-2xl sm:text-3xl font-extrabold font-display text-zinc-900 tracking-tight">{value}</h3>
       </div>
-      <div className={`p-2.5 bg-zinc-50 border border-zinc-200 text-zinc-800`}>
+      <div className={`p-2 sm:p-2.5 bg-zinc-50 border border-zinc-200 text-zinc-800`}>
         <Icon className="h-4 w-4" />
       </div>
     </div>
@@ -97,7 +97,7 @@ export default function Dashboard({
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           title="Total Registered Assets"
           value={totalItemsCount}
@@ -121,9 +121,9 @@ export default function Dashboard({
       </div>
 
       {/* Main content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Recent Transmittals Column */}
-        <div className="lg:col-span-2 bg-white border border-zinc-200 p-6 flex flex-col">
+        <div className="lg:col-span-2 bg-white border border-zinc-200 p-4 sm:p-6 flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-900">Recent Transmittal Logs</h2>
@@ -198,9 +198,9 @@ export default function Dashboard({
         </div>
 
         {/* Alerts & Quick Actions Column */}
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Low stock alerts */}
-          <div className="bg-white border border-zinc-200 p-6">
+          <div className="bg-white border border-zinc-200 p-4 sm:p-6">
             <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-900 mb-4 flex items-center">
               <AlertTriangle className="h-4 w-4 text-zinc-800 mr-2" />
               Low Stock Alert
@@ -232,7 +232,7 @@ export default function Dashboard({
           </div>
 
           {/* Cloud Database & Google Drive Live Sync Card */}
-          <div className="bg-white border border-zinc-200 p-6">
+          <div className="bg-white border border-zinc-200 p-4 sm:p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-900 flex items-center">
                 <Cloud className="h-4 w-4 text-zinc-800 mr-2" />

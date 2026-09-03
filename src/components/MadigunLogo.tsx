@@ -1,14 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { fetchSystemLogoFromFirestore } from '../firebaseSync';
 
 interface MadigunLogoProps {
   className?: string;
   showText?: boolean;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  textClassName?: string;
 }
 
-export default function MadigunLogo({ className = '', showText = true }: MadigunLogoProps) {
+export default function MadigunLogo({ 
+  className = '', 
+  showText = true, 
+  size = 'md',
+  textClassName = ''
+}: MadigunLogoProps) {
   const [customLogo, setCustomLogo] = useState<string | null>(() => localStorage.getItem('madigun_custom_logo'));
 
   useEffect(() => {
+    // If not loaded yet, verify with Firestore directly
+    if (!customLogo) {
+      fetchSystemLogoFromFirestore().then((logo) => {
+        if (logo) setCustomLogo(logo);
+      });
+    }
+
     const handleUpdate = () => {
       setCustomLogo(localStorage.getItem('madigun_custom_logo'));
     };
@@ -16,17 +31,24 @@ export default function MadigunLogo({ className = '', showText = true }: Madigun
     return () => {
       window.removeEventListener('madigun_logo_updated', handleUpdate);
     };
-  }, []);
+  }, [customLogo]);
+
+  const sizeDimensions = {
+    sm: 'w-7 h-7 sm:w-8 sm:h-8',
+    md: 'w-9 h-9 sm:w-11 sm:h-11',
+    lg: 'w-12 h-12 sm:w-14 sm:h-14',
+    xl: 'w-16 h-16 sm:w-20 sm:h-20',
+  }[size];
 
   return (
-    <div className={`flex items-center gap-3.5 ${className}`}>
-      {/* Beautiful Logo Container */}
-      <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+    <div className={`flex items-center gap-2 sm:gap-3.5 ${className}`}>
+      {/* Responsive Logo Container */}
+      <div className={`relative ${sizeDimensions} flex items-center justify-center shrink-0`}>
         {customLogo ? (
           <img 
             src={customLogo} 
-            alt="Madigun Custom Logo" 
-            className="w-12 h-12 object-contain"
+            alt="Madigun Official System Logo" 
+            className="w-full h-full object-contain select-none"
             referrerPolicy="no-referrer"
           />
         ) : (
@@ -43,9 +65,7 @@ export default function MadigunLogo({ className = '', showText = true }: Madigun
             <path d="M50,26 C57,20 68,26 71,36 C64,30 55,30 50,37 C45,30 36,30 29,36 C32,26 43,20 50,26 Z" fill="#D5CBC1" />
             
             {/* Main outer pillars / decorative columns of the 'M' */}
-            {/* Left Column */}
             <path d="M22,38 L27,35 C29,48 23,65 24,80 L18,80 C19,65 20,48 22,38 Z" fill="#D5CBC1" />
-            {/* Right Column */}
             <path d="M78,38 L73,35 C71,48 77,65 76,80 L82,80 C81,65 80,48 78,38 Z" fill="#D5CBC1" />
             
             {/* Center V columns of the 'M' */}
@@ -66,15 +86,15 @@ export default function MadigunLogo({ className = '', showText = true }: Madigun
       </div>
 
       {showText && (
-        <div className="flex flex-col">
+        <div className={`flex flex-col min-w-0 ${textClassName}`}>
           <span 
-            className="font-display font-light text-zinc-900 tracking-[0.25em] text-sm uppercase leading-none"
+            className="font-display font-light text-zinc-900 tracking-[0.22em] text-xs sm:text-sm uppercase leading-none truncate"
             style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}
           >
             MADIGUN
           </span>
           <span 
-            className="text-[8px] font-semibold text-zinc-500 uppercase tracking-[0.18em] leading-none mt-1"
+            className="text-[7px] sm:text-[8px] font-semibold text-zinc-500 uppercase tracking-[0.16em] leading-none mt-0.5 sm:mt-1 truncate"
             style={{ color: '#837265' }}
           >
             Hotel & Events

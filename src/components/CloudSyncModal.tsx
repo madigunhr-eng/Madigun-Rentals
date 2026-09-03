@@ -277,7 +277,7 @@ export default function CloudSyncModal({ isOpen, onClose, currentUser }: CloudSy
         className="bg-white w-full max-w-3xl border border-zinc-200 overflow-hidden flex flex-col relative z-10 max-h-[90vh]"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50 shrink-0">
+        <div className="px-4 sm:px-6 py-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-zinc-900 text-white">
               <Database className="h-4 w-4" />
@@ -304,8 +304,8 @@ export default function CloudSyncModal({ isOpen, onClose, currentUser }: CloudSy
         </div>
 
         {/* Navigation Tabs */}
-        <div className="border-b border-zinc-200 bg-white px-6 shrink-0">
-          <div className="flex gap-6 text-xs font-bold uppercase tracking-widest">
+        <div className="border-b border-zinc-200 bg-white px-4 sm:px-6 shrink-0 overflow-x-auto scrollbar-none">
+          <div className="flex gap-4 sm:gap-6 text-xs font-bold uppercase tracking-widest min-w-max">
             <button
               id="tab-cloud-overview"
               onClick={() => setActiveTab('overview')}

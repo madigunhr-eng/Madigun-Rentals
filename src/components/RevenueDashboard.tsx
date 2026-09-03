@@ -404,7 +404,7 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
       </div>
 
       {/* Metrics Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Metric 1 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}

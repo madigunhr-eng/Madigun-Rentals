@@ -180,10 +180,10 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
         </motion.div>
       )}
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* Left column: Recipient and checkout details */}
-        <div className="lg:col-span-1 space-y-5 bg-white p-6 border border-zinc-200">
+        <div className="lg:col-span-1 space-y-5 bg-white p-4 sm:p-6 border border-zinc-200">
           <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest pb-3 border-b border-zinc-200">
             Transmittal Logistics
           </h3>
@@ -291,7 +291,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
         <div className="lg:col-span-2 space-y-6 flex flex-col h-full">
           
           {/* Item Selector box */}
-          <div className="bg-white p-6 border border-zinc-200 space-y-4">
+          <div className="bg-white p-4 sm:p-6 border border-zinc-200 space-y-4">
             <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest pb-3 border-b border-zinc-200">
               Select Assets to Issue
             </h3>

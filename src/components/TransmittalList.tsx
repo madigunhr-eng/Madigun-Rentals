@@ -827,7 +827,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
         id={`tx-card-${tx.transmittalNo}`}
         key={tx.id}
         onClick={() => handleOpenDetails(tx)}
-        className="bg-white border border-zinc-200 p-6 cursor-pointer flex flex-col justify-between hover:border-zinc-900 relative group transition-all"
+        className="bg-white border border-zinc-200 p-4 sm:p-6 cursor-pointer flex flex-col justify-between hover:border-zinc-900 relative group transition-all"
       >
         <div>
           <div className="flex justify-between items-start gap-2">
@@ -1282,7 +1282,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                   {pendingTickets.length} {pendingTickets.length === 1 ? 'TICKET' : 'TICKETS'}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {pendingTickets.map((tx) => renderCard(tx))}
               </div>
             </div>
@@ -1302,7 +1302,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                   {fullyReconciledTickets.length} {fullyReconciledTickets.length === 1 ? 'TICKET' : 'TICKETS'}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {fullyReconciledTickets.map((tx) => renderCard(tx))}
               </div>
             </div>
@@ -1321,7 +1321,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
               initial={{ opacity: 0, x: 100 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 100 }}
-              className="bg-white w-full max-w-lg h-full border-l border-zinc-200 shadow-none flex flex-col p-6 overflow-y-auto relative z-10"
+              className="bg-white w-full max-w-lg h-full border-l border-zinc-200 shadow-none flex flex-col p-4 sm:p-6 overflow-y-auto relative z-10"
             >
               {/* Modal Header */}
               <div className="flex justify-between items-center border-b border-zinc-200 pb-4 shrink-0">

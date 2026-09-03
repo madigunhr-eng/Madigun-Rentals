@@ -22,10 +22,14 @@ import {
   Save,
   Trash2,
   UserPlus,
-  ShieldAlert
+  ShieldAlert,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { localStore } from '../localStore';
 import { UserProfile, UserRole } from '../types';
+import { syncSetSystemLogo } from '../firebaseSync';
+import { optimizeLogoImage } from '../utils/imageOptimizer';
 
 interface UserManagementProps {
   currentUser: any;
@@ -35,7 +39,7 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'accounts' | 'pending'>('accounts');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'pending' | 'branding'>('accounts');
   const [roleFilter, setRoleFilter] = useState<'all' | 'Admin' | 'Managing Director' | 'Front Desk'>('all');
   const [assigningRoles, setAssigningRoles] = useState<{ [userId: string]: UserRole }>({});
   
@@ -43,6 +47,62 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Logo Branding State
+  const [currentCustomLogo, setCurrentCustomLogo] = useState<string | null>(() => localStorage.getItem('madigun_custom_logo'));
+  const [logoUploading, setLogoUploading] = useState(false);
+
+  useEffect(() => {
+    const handleLogoUpdate = () => {
+      setCurrentCustomLogo(localStorage.getItem('madigun_custom_logo'));
+    };
+    window.addEventListener('madigun_logo_updated', handleLogoUpdate);
+    return () => window.removeEventListener('madigun_logo_updated', handleLogoUpdate);
+  }, []);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Please select a valid image file (PNG/JPEG/SVG).');
+      return;
+    }
+
+    setErrorMsg('');
+    setSuccessMsg('');
+    setLogoUploading(true);
+
+    try {
+      const optimizedBase64 = await optimizeLogoImage(file, 512, 0.92);
+      await syncSetSystemLogo(optimizedBase64);
+      setSuccessMsg('Official System Logo permanently embedded in the Cloud Database! Propagated to all devices.');
+    } catch (err: any) {
+      setErrorMsg('Failed to embed logo: ' + (err.message || 'Unknown error'));
+    } finally {
+      setLogoUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleResetLogo = async () => {
+    if (!window.confirm('Are you sure you want to remove the permanent official system logo and revert to the default insignia?')) {
+      return;
+    }
+
+    setErrorMsg('');
+    setSuccessMsg('');
+    setLogoUploading(true);
+
+    try {
+      await syncSetSystemLogo(null);
+      setSuccessMsg('Permanent logo removed from Cloud Database. System reverted to default insignia.');
+    } catch (err: any) {
+      setErrorMsg('Failed to reset logo: ' + (err.message || 'Unknown error'));
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   // Personal Profile Modal State
   const [selectedProfileUser, setSelectedProfileUser] = useState<UserProfile | null>(null);
@@ -252,29 +312,41 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
           </div>
 
           {/* Tab Selection */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto scrollbar-none pb-1 md:pb-0">
             <button
               onClick={() => setActiveTab('accounts')}
-              className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 sm:px-4 py-2 text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 activeTab === 'accounts'
                   ? 'bg-zinc-950 text-white border-zinc-900 shadow-xs'
                   : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
               }`}
             >
               <Users className="h-3.5 w-3.5" />
-              Registered Accounts ({approvedUsers.length})
+              Registered ({approvedUsers.length})
             </button>
 
             <button
               onClick={() => setActiveTab('pending')}
-              className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 sm:px-4 py-2 text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 activeTab === 'pending'
                   ? 'bg-amber-400 text-zinc-950 border-amber-300 font-mono font-black shadow-xs'
                   : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
               }`}
             >
               <Clock className="h-3.5 w-3.5" />
-              Pending Approvals ({pendingUsers.length})
+              Pending ({pendingUsers.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('branding')}
+              className={`px-3.5 sm:px-4 py-2 text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'branding'
+                  ? 'bg-zinc-950 text-white border-zinc-900 shadow-xs'
+                  : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+              }`}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Official System Logo
             </button>
           </div>
         </div>
@@ -294,99 +366,234 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
           </div>
         )}
 
-        {/* Search & Sub-Filter Bar */}
-        <div className="mt-6 flex flex-col md:flex-row gap-3 items-center">
-          <div className="relative w-full md:flex-1">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-zinc-400">
-              <Search className="h-4 w-4" />
-            </span>
-            <input
-              id="input-search-accounts"
-              type="text"
-              placeholder="Search by Name, Username, Employee ID, Email, Department..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-zinc-200 text-xs font-semibold uppercase tracking-wider bg-zinc-50 focus:bg-white focus:outline-none focus:border-zinc-900 transition-all text-zinc-800"
-            />
-          </div>
-
-          {activeTab === 'accounts' && (
-            <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 whitespace-nowrap mr-1">Role:</span>
-              <button
-                onClick={() => setRoleFilter('all')}
-                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer ${
-                  roleFilter === 'all' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
-                }`}
-              >
-                All Roles
-              </button>
-              <button
-                onClick={() => setRoleFilter('Admin')}
-                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer ${
-                  roleFilter === 'Admin' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
-                }`}
-              >
-                Root Admin
-              </button>
-              <button
-                onClick={() => setRoleFilter('Managing Director')}
-                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer ${
-                  roleFilter === 'Managing Director' ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
-                }`}
-              >
-                Managing Directors
-              </button>
-              <button
-                onClick={() => setRoleFilter('Front Desk')}
-                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer ${
-                  roleFilter === 'Front Desk' ? 'bg-emerald-800 text-white border-emerald-800' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
-                }`}
-              >
-                Front Desk Staff
-              </button>
+        {/* Search & Sub-Filter Bar (Hidden in Branding Tab) */}
+        {activeTab !== 'branding' && (
+          <div className="mt-6 flex flex-col md:flex-row gap-3 items-center">
+            <div className="relative w-full md:flex-1">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-zinc-400">
+                <Search className="h-4 w-4" />
+              </span>
+              <input
+                id="input-search-accounts"
+                type="text"
+                placeholder="Search by Name, Username, Employee ID, Email, Department..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 border border-zinc-200 text-xs font-semibold uppercase tracking-wider bg-zinc-50 focus:bg-white focus:outline-none focus:border-zinc-900 transition-all text-zinc-800"
+              />
             </div>
-          )}
-        </div>
+
+            {activeTab === 'accounts' && (
+              <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto scrollbar-none pb-1 md:pb-0">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 whitespace-nowrap mr-1">Role:</span>
+                <button
+                  onClick={() => setRoleFilter('all')}
+                  className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer whitespace-nowrap ${
+                    roleFilter === 'all' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
+                  }`}
+                >
+                  All Roles
+                </button>
+                <button
+                  onClick={() => setRoleFilter('Admin')}
+                  className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer whitespace-nowrap ${
+                    roleFilter === 'Admin' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
+                  }`}
+                >
+                  Root Admin
+                </button>
+                <button
+                  onClick={() => setRoleFilter('Managing Director')}
+                  className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer whitespace-nowrap ${
+                    roleFilter === 'Managing Director' ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
+                  }`}
+                >
+                  Managing Directors
+                </button>
+                <button
+                  onClick={() => setRoleFilter('Front Desk')}
+                  className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border cursor-pointer whitespace-nowrap ${
+                    roleFilter === 'Front Desk' ? 'bg-emerald-800 text-white border-emerald-800' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
+                  }`}
+                >
+                  Front Desk Staff
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Role Matrix Reference */}
-      <div className="bg-zinc-950 text-white border border-zinc-800 p-4 space-y-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 block">
-          Role Access Matrix Reference:
-        </span>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-          <div className="bg-zinc-900/80 p-2.5 border border-zinc-800 space-y-1">
-            <span className="font-bold text-amber-300 uppercase">1. Front Desk (Staff Account)</span>
-            <p className="text-[11px] text-zinc-300 font-sans">
-              Operational staff access to <strong>Transmittals</strong>, <strong>Rental Items</strong>, and <strong>Rental Halls & Event Venues</strong>.
-            </p>
+      {/* BRANDING TAB VIEW */}
+      {activeTab === 'branding' ? (
+        <div className="bg-white border border-zinc-200 p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-zinc-200 pb-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <Upload className="h-5 w-5 text-zinc-900" />
+                <h2 className="text-base font-black uppercase tracking-wider text-zinc-900">
+                  Official System Logo & Identity
+                </h2>
+              </div>
+              <p className="text-xs text-zinc-500 mt-1 max-w-xl">
+                Upload your official brand insignia. Once saved, it is <span className="font-bold text-zinc-900">permanently embedded in the Cloud Database</span> and used across all mobile devices, tablets, desktop workstations, and generated PDF transmittals.
+              </p>
+            </div>
+
+            <span className="inline-flex items-center px-3 py-1 text-[10px] font-black uppercase tracking-widest bg-zinc-900 text-white border border-zinc-800">
+              Cloud Database Embedded
+            </span>
           </div>
 
-          <div className="bg-zinc-900/80 p-2.5 border border-zinc-800 space-y-1">
-            <span className="font-bold text-emerald-300 uppercase">2. Managing Director (Executive Account)</span>
-            <p className="text-[11px] text-zinc-300 font-sans">
-              Operational & supervisory access to property management and transmittals.
-            </p>
-          </div>
-        </div>
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Logo Preview Cards */}
+            <div className="space-y-4">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                Active System Emblem Preview
+              </span>
 
-      {/* User Accounts Directory Grid */}
-      {loading ? (
-        <div className="bg-white border border-zinc-200 p-12 text-center text-xs font-bold text-zinc-400 uppercase tracking-wider">
-          Loading Personnel Accounts...
-        </div>
-      ) : filteredUsers.length === 0 ? (
-        <div className="bg-white border border-zinc-200 p-12 text-center">
-          <Users className="h-10 w-10 text-zinc-300 mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-wider">No Accounts Found</h3>
-          <p className="text-xs text-zinc-400 mt-1">
-            {activeTab === 'pending' ? 'There are no pending registrations requiring approval.' : 'No account records match the current search filters.'}
-          </p>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Light Background Preview */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 flex flex-col items-center justify-center text-center h-44">
+                  <div className="h-20 w-20 flex items-center justify-center">
+                    {currentCustomLogo ? (
+                      <img 
+                        src={currentCustomLogo} 
+                        alt="Official Logo Preview" 
+                        className="max-h-full max-w-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="text-xs font-mono font-bold text-zinc-400 uppercase">Default Monogram</span>
+                    )}
+                  </div>
+                  <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-wider mt-3">
+                    Light Background
+                  </span>
+                </div>
+
+                {/* Dark Background Preview */}
+                <div className="p-4 bg-zinc-950 border border-zinc-800 flex flex-col items-center justify-center text-center h-44">
+                  <div className="h-20 w-20 flex items-center justify-center">
+                    {currentCustomLogo ? (
+                      <img 
+                        src={currentCustomLogo} 
+                        alt="Official Logo Preview" 
+                        className="max-h-full max-w-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="text-xs font-mono font-bold text-zinc-500 uppercase">Default Monogram</span>
+                    )}
+                  </div>
+                  <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider mt-3">
+                    Dark Background
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs p-3 bg-zinc-50 border border-zinc-200">
+                <span className="font-bold uppercase text-zinc-700 text-[10px] tracking-wider">
+                  Storage Status:
+                </span>
+                <span className="font-mono text-[10px] font-bold text-emerald-700">
+                  {currentCustomLogo ? 'Permanently Embedded in Firestore (settings/logo)' : 'Using Default Insignia'}
+                </span>
+              </div>
+
+              {currentCustomLogo && (
+                <button
+                  type="button"
+                  onClick={handleResetLogo}
+                  disabled={logoUploading}
+                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer w-full"
+                >
+                  Reset to Default Monogram
+                </button>
+              )}
+            </div>
+
+            {/* Upload Box */}
+            <div className="space-y-4 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                  Upload New Official Logo
+                </span>
+                <p className="text-xs text-zinc-600 leading-relaxed">
+                  Select a clean image file (<span className="font-mono font-bold text-zinc-800">PNG</span>, <span className="font-mono font-bold text-zinc-800">JPEG</span>, or <span className="font-mono font-bold text-zinc-800">SVG</span>). Transparent PNG is recommended for optimal rendering. The image will be auto-optimized and permanently saved in Firestore.
+                </p>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="file"
+                  id="user-mgmt-logo-upload"
+                  accept="image/png, image/jpeg, image/jpg, image/svg+xml"
+                  onChange={handleLogoUpload}
+                  disabled={logoUploading}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="user-mgmt-logo-upload"
+                  className={`w-full py-8 px-4 border-2 border-dashed border-zinc-300 hover:border-zinc-900 bg-zinc-50 hover:bg-white text-zinc-700 hover:text-zinc-900 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${
+                    logoUploading ? 'opacity-50 pointer-events-none' : ''
+                  }`}
+                >
+                  <Upload className="h-6 w-6 text-zinc-500" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-center">
+                    {logoUploading ? 'Optimizing & Embedding into Database...' : 'Click to Browse & Upload Official Logo'}
+                  </span>
+                  <span className="text-[9px] text-zinc-400 uppercase tracking-wider font-mono">
+                    Supports PNG with transparency • Auto-scaled for Retina & PDF
+                  </span>
+                </label>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-normal font-medium">
+                <strong>Multi-Device Persistence:</strong> Any changes made here immediately sync in real-time across all mobile phones, front-desk terminals, and manager dashboards connected to the system.
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <>
+          {/* Role Matrix Reference */}
+          <div className="bg-zinc-950 text-white border border-zinc-800 p-4 space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 block">
+              Role Access Matrix Reference:
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+              <div className="bg-zinc-900/80 p-2.5 border border-zinc-800 space-y-1">
+                <span className="font-bold text-amber-300 uppercase">1. Front Desk (Staff Account)</span>
+                <p className="text-[11px] text-zinc-300 font-sans">
+                  Operational staff access to <strong>Transmittals</strong>, <strong>Rental Items</strong>, and <strong>Rental Halls & Event Venues</strong>.
+                </p>
+              </div>
+
+              <div className="bg-zinc-900/80 p-2.5 border border-zinc-800 space-y-1">
+                <span className="font-bold text-emerald-300 uppercase">2. Managing Director (Executive Account)</span>
+                <p className="text-[11px] text-zinc-300 font-sans">
+                  Operational & supervisory access to property management and transmittals.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* User Accounts Directory Grid */}
+          {loading ? (
+            <div className="bg-white border border-zinc-200 p-12 text-center text-xs font-bold text-zinc-400 uppercase tracking-wider">
+              Loading Personnel Accounts...
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="bg-white border border-zinc-200 p-12 text-center">
+              <Users className="h-10 w-10 text-zinc-300 mx-auto mb-3" />
+              <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-wider">No Accounts Found</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                {activeTab === 'pending' ? 'There are no pending registrations requiring approval.' : 'No account records match the current search filters.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {filteredUsers.map((user) => {
             const isPending = user.status === 'Pending' || user.role === 'Pending';
             const isRejected = user.status === 'Rejected';
@@ -522,6 +729,8 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
             );
           })}
         </div>
+      )}
+      </>
       )}
 
       {/* Personal Profile Modal / Drawer */}
