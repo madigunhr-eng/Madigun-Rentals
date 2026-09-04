@@ -30,8 +30,7 @@ export function generateTransmittalNo(
   return `${datePrefix}${seqFormatted}`;
 }
 
-export const CATEGORIES = [
-  'All',
+export const DEFAULT_CATEGORIES = [
   'Corkage & Service Permits',
   'Cameras',
   'Lenses',
@@ -39,4 +38,9 @@ export const CATEGORIES = [
   'Lighting',
   'Laptops',
   'Accessories'
+];
+
+export const CATEGORIES = [
+  'All',
+  ...DEFAULT_CATEGORIES
 ];

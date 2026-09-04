@@ -1,4 +1,5 @@
-import { InventoryItem, Transmittal, DeletedLog, Custodian, AuditLog, UserProfile, Warehouse } from './types';
+import { InventoryItem, Transmittal, DeletedLog, Custodian, AuditLog, UserProfile, Warehouse, ItemCategory } from './types';
+import { DEFAULT_CATEGORIES } from './utils';
 
 const STORAGE_PREFIX = 'madigun_db_';
 const INITIALIZED_KEY = 'madigun_db_initialized_v2';
@@ -214,6 +215,27 @@ export function initLocalStore(): void {
     setCollectionRaw('transmittals', []);
   }
 
+  if (!localStorage.getItem(getStorageKey('categories'))) {
+    const defaultCats: ItemCategory[] = DEFAULT_CATEGORIES.map((catName, idx) => ({
+      id: `cat_${idx + 1}_${catName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      name: catName,
+      isSystem: catName === 'Corkage & Service Permits',
+      createdAt: new Date().toISOString()
+    }));
+    setCollectionRaw('categories', defaultCats);
+  } else {
+    const currentCats = getCollectionRaw<ItemCategory>('categories');
+    if (!currentCats || currentCats.length === 0) {
+      const defaultCats: ItemCategory[] = DEFAULT_CATEGORIES.map((catName, idx) => ({
+        id: `cat_${idx + 1}_${catName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        name: catName,
+        isSystem: catName === 'Corkage & Service Permits',
+        createdAt: new Date().toISOString()
+      }));
+      setCollectionRaw('categories', defaultCats);
+    }
+  }
+
   if (!localStorage.getItem(getStorageKey('deleted_logs'))) {
     localStorage.setItem(getStorageKey('deleted_logs'), JSON.stringify([]));
   }
@@ -224,11 +246,18 @@ export function initLocalStore(): void {
 }
 
 export function restoreDefaultSeedData(): void {
+  const defaultCats: ItemCategory[] = DEFAULT_CATEGORIES.map((catName, idx) => ({
+    id: `cat_${idx + 1}_${catName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    name: catName,
+    isSystem: catName === 'Corkage & Service Permits',
+    createdAt: new Date().toISOString()
+  }));
   setCollectionRaw('users', DEFAULT_USERS);
   setCollectionRaw('warehouses', []);
   setCollectionRaw('custodians', []);
   setCollectionRaw('inventory', []);
   setCollectionRaw('transmittals', []);
+  setCollectionRaw('categories', defaultCats);
   setCollectionRaw('deleted_logs', []);
   setCollectionRaw('audit_logs', []);
 }

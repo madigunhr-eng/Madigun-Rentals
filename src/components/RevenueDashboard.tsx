@@ -747,7 +747,7 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
                 <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-100 pb-1">Rent Items Breakdown</h4>
                 <div className="divide-y divide-zinc-100">
                   {selectedTxDetail.itemsDetail.map((item: any, idx: number) => (
-                    <div key={idx} className="py-2.5 flex justify-between items-center text-xs">
+                    <div key={item.itemId || `${item.sku}-${idx}`} className="py-2.5 flex justify-between items-center text-xs">
                       <div className="space-y-0.5 max-w-[280px]">
                         <p className="font-bold text-zinc-800">{item.name}</p>
                         <p className="text-[10px] text-zinc-400 font-mono uppercase tracking-wide">{item.sku}</p>

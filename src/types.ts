@@ -35,6 +35,13 @@ export interface Warehouse {
   createdAt: string;
 }
 
+export interface ItemCategory {
+  id: string;
+  name: string;
+  isSystem?: boolean;
+  createdAt?: string;
+}
+
 export interface TransmittalItem {
   itemId: string;
   name: string;

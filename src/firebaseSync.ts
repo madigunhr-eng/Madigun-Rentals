@@ -19,7 +19,8 @@ const COLLECTIONS = [
   'warehouses',
   'custodians',
   'audit_logs',
-  'users'
+  'users',
+  'categories'
 ];
 
 let isSyncingFromFirestore = false;
@@ -69,6 +70,18 @@ export function initFirestoreSync(): () => void {
                   }
                 });
                 batch.commit().catch(e => console.warn('Users sync error:', e));
+              }
+            } else if (colName === 'categories') {
+              const localCats = localStore.getCollection('categories');
+              if (localCats.length > 0) {
+                const batch = writeBatch(db);
+                localCats.forEach((c: any) => {
+                  if (c && c.id) {
+                    const { id, ...data } = c;
+                    batch.set(doc(db, 'categories', id), data, { merge: true });
+                  }
+                });
+                batch.commit().catch(e => console.warn('Categories sync error:', e));
               }
             } else {
               localStore.setCollection(colName, []);
@@ -250,7 +263,8 @@ export async function restoreBackupToFirestore(
     'warehouses',
     'custodians',
     'audit_logs',
-    'users'
+    'users',
+    'categories'
   ];
 
   let totalSteps = collections.length * (wipeFirst ? 2 : 1);

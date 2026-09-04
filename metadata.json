@@ -1,6 +1,6 @@
 {
   "name": "Madigun Rentals",
-  "description": "Madigun Rental Systems",
+  "description": "Real-time rental inventory manager with item check-in/out and multi-item transmittal tracking for Madigun Hotel & Events.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

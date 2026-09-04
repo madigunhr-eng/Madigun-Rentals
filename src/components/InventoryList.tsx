@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, MapPin, Edit, PlusCircle, MinusCircle, CheckCircle, Info, X, Save, Trash2, Send } from 'lucide-react';
+import { Search, Plus, MapPin, Edit, PlusCircle, MinusCircle, CheckCircle, Info, X, Save, Trash2, Send, Tag, AlertTriangle } from 'lucide-react';
 import { localStore } from '../localStore';
-import { InventoryItem, UserSession, Warehouse } from '../types';
-import { CATEGORIES } from '../utils';
+import { InventoryItem, UserSession, Warehouse, ItemCategory } from '../types';
+import { CATEGORIES, DEFAULT_CATEGORIES } from '../utils';
 
 interface InventoryListProps {
   items: InventoryItem[];
@@ -29,6 +29,158 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
     if (!warehouseId) return 'Unassigned';
     const wh = warehouses.find(w => w.id === warehouseId);
     return wh ? wh.name : 'Unassigned';
+  };
+
+  const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'Managing Director';
+
+  // Dynamic Item Categories state
+  const [categories, setCategories] = useState<ItemCategory[]>(() => {
+    const stored = localStore.getCollection<ItemCategory>('categories');
+    if (stored && stored.length > 0) return stored;
+    return DEFAULT_CATEGORIES.map((c, i) => ({
+      id: `cat_${i + 1}_${c.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      name: c,
+      isSystem: c === 'Corkage & Service Permits',
+      createdAt: new Date().toISOString()
+    }));
+  });
+
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryActionError, setCategoryActionError] = useState('');
+  const [categoryActionSuccess, setCategoryActionSuccess] = useState('');
+  const [categoryToDelete, setCategoryToDelete] = useState<ItemCategory | null>(null);
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
+
+  React.useEffect(() => {
+    const unsubscribe = localStore.subscribe<ItemCategory>('categories', (list) => {
+      if (list && list.length > 0) {
+        setCategories(list);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Compute category names list including any uncategorized or existing item categories
+  const categoryNames = React.useMemo(() => {
+    const list = categories.map(c => c.name);
+    // Include items' categories if any are missing from the list
+    items.forEach(item => {
+      if (item.category && item.category !== 'Rental Halls & Event Venues' && !list.includes(item.category)) {
+        list.push(item.category);
+      }
+    });
+    return Array.from(new Set(list));
+  }, [categories, items]);
+
+  const getItemsCountForCategory = (catName: string) => {
+    return items.filter(i => {
+      const isNotHall = i.category !== 'Rental Halls & Event Venues' && !i.sku?.toLowerCase().startsWith('hall-');
+      const matches = catName === 'Corkage & Service Permits' ? (i.isNoQuantity || i.category === 'Corkage & Service Permits') : i.category === catName;
+      return i.status !== 'Retired' && isNotHall && matches;
+    }).length;
+  };
+
+  // Add category handler (Admin access)
+  const handleAddCategory = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setCategoryActionError('');
+    setCategoryActionSuccess('');
+
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      setCategoryActionError('Please enter a category name.');
+      return;
+    }
+
+    if (trimmed.toLowerCase() === 'all') {
+      setCategoryActionError('"All" is a reserved filter tab name.');
+      return;
+    }
+
+    const exists = categories.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
+    if (exists) {
+      setCategoryActionError(`Category "${trimmed}" already exists.`);
+      return;
+    }
+
+    try {
+      const newCat: ItemCategory = {
+        id: `cat_${Date.now()}_${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        name: trimmed,
+        createdAt: new Date().toISOString()
+      };
+
+      await localStore.addItem('categories', newCat);
+
+      // Audit log
+      try {
+        await localStore.addItem('audit_logs', {
+          id: `audit_${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actor: currentUser?.fullName || currentUser?.username || 'Admin',
+          action: 'Created Item Category',
+          details: `Added new rental item category "${trimmed}"`,
+          type: 'inventory'
+        });
+      } catch (e) {}
+
+      setNewCategoryName('');
+      setCategoryActionSuccess(`Category "${trimmed}" added successfully.`);
+      setTimeout(() => setCategoryActionSuccess(''), 3500);
+    } catch (err: any) {
+      setCategoryActionError(err.message || 'Failed to add category.');
+    }
+  };
+
+  // Delete category handler (Admin access)
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setCategoryActionError('');
+    setCategoryActionSuccess('');
+    setIsDeletingCategory(true);
+
+    const catName = categoryToDelete.name;
+
+    try {
+      // 1. Delete from categories
+      await localStore.deleteItem('categories', categoryToDelete.id);
+
+      // 2. Reclassify any items belonging to this category to 'Uncategorized'
+      const affectedItems = items.filter(i => i.category === catName);
+      if (affectedItems.length > 0) {
+        for (const item of affectedItems) {
+          await onUpdateItem(item.id, {
+            category: 'Uncategorized'
+          });
+        }
+      }
+
+      // 3. If currently filtered by this category, reset filter to 'All'
+      if (selectedCategory === catName) {
+        setSelectedCategory('All');
+      }
+
+      // 4. Audit log
+      try {
+        await localStore.addItem('audit_logs', {
+          id: `audit_${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actor: currentUser?.fullName || currentUser?.username || 'Admin',
+          action: 'Deleted Item Category',
+          details: `Deleted category "${catName}" (${affectedItems.length} items reclassified to Uncategorized)`,
+          type: 'inventory'
+        });
+      } catch (e) {}
+
+      setCategoryActionSuccess(`Category "${catName}" deleted successfully.`);
+      setCategoryToDelete(null);
+      setTimeout(() => setCategoryActionSuccess(''), 3500);
+    } catch (err: any) {
+      setCategoryActionError(err.message || 'Failed to delete category.');
+    } finally {
+      setIsDeletingCategory(false);
+    }
   };
   
   // Modals/Pannels state
@@ -373,7 +525,7 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 border border-zinc-200 space-y-3">
-        <div className="flex flex-col md:flex-row gap-3 items-center">
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
           <div className="relative w-full md:flex-1">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-zinc-400">
               <Search className="h-4 w-4" />
@@ -387,26 +539,85 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
               className="w-full pl-9 pr-4 py-2 border border-zinc-200 text-xs font-semibold uppercase tracking-wider bg-zinc-50 focus:bg-white focus:outline-none focus:border-zinc-900 transition-all text-zinc-800 placeholder-zinc-400"
             />
           </div>
+
+          {/* Admin Manage Categories Action */}
+          {isAdmin && (
+            <button
+              id="btn-open-manage-categories"
+              type="button"
+              onClick={() => {
+                setCategoryActionError('');
+                setCategoryActionSuccess('');
+                setCategoryToDelete(null);
+                setIsCategoryModalOpen(true);
+              }}
+              className="w-full md:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2 border border-zinc-300 hover:border-zinc-900 bg-white hover:bg-zinc-50 text-zinc-800 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+              title="Admin access: Add or delete rental item categories"
+            >
+              <Tag className="h-3.5 w-3.5 text-zinc-600" />
+              <span>Manage Categories</span>
+              <span className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-200 text-zinc-700">
+                {categories.length}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Category Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-0.5 no-scrollbar">
-          {CATEGORIES.map((cat) => {
+          <button
+            id="cat-tab-all"
+            onClick={() => setSelectedCategory('All')}
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border cursor-pointer ${
+              selectedCategory === 'All'
+                ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
+                : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+            }`}
+          >
+            All ({items.filter(i => i.status !== 'Retired' && i.category !== 'Rental Halls & Event Venues' && !i.sku?.toLowerCase().startsWith('hall-')).length})
+          </button>
+
+          {categoryNames.map((cat) => {
             const isSelected = selectedCategory === cat;
+            const count = getItemsCountForCategory(cat);
+
             return (
               <button
                 key={cat}
+                id={`cat-tab-${cat.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border cursor-pointer ${
+                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border cursor-pointer flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
                     : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
                 }`}
               >
-                {cat === 'Corkage & Service Permits' ? 'Corkage & Permits (No Qty)' : cat}
+                <span>{cat === 'Corkage & Service Permits' ? 'Corkage & Permits (No Qty)' : cat}</span>
+                <span className={`text-[9px] font-mono ${isSelected ? 'text-zinc-300' : 'text-zinc-400'}`}>
+                  {count}
+                </span>
               </button>
             );
           })}
+
+          {/* Quick Add Category Shortcut for Admin */}
+          {isAdmin && (
+            <button
+              id="btn-quick-add-category"
+              type="button"
+              onClick={() => {
+                setCategoryActionError('');
+                setCategoryActionSuccess('');
+                setCategoryToDelete(null);
+                setIsCategoryModalOpen(true);
+              }}
+              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border border-dashed border-zinc-300 hover:border-zinc-900 bg-white hover:bg-zinc-50 text-zinc-600 hover:text-zinc-900 cursor-pointer flex items-center gap-1 shrink-0"
+              title="Add or delete category"
+            >
+              <Plus className="h-3 w-3" />
+              <span>Category</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -584,6 +795,35 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
                         onChange={(e) => setSelectedItem({ ...selectedItem, name: e.target.value })}
                         className="w-full px-3 py-2 border border-zinc-200 text-xs font-semibold focus:outline-none focus:border-zinc-900 bg-zinc-50 focus:bg-white text-zinc-800"
                       />
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Item Category</label>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCategoryActionError('');
+                              setCategoryActionSuccess('');
+                              setCategoryToDelete(null);
+                              setIsCategoryModalOpen(true);
+                            }}
+                            className="text-[9px] font-bold text-zinc-600 hover:text-zinc-900 uppercase tracking-widest cursor-pointer underline"
+                          >
+                            Manage Categories
+                          </button>
+                        )}
+                      </div>
+                      <select
+                        id="edit-item-category"
+                        value={selectedItem.category}
+                        onChange={(e) => setSelectedItem({ ...selectedItem, category: e.target.value })}
+                        className="w-full px-3 py-2 border border-zinc-200 text-xs font-semibold focus:outline-none focus:border-zinc-900 bg-zinc-50 focus:bg-white text-zinc-800"
+                      >
+                        {categoryNames.filter(c => c !== 'All').map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">SKU / SERIAL (Static)</label>
@@ -960,7 +1200,23 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Item Category</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Item Category</label>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCategoryActionError('');
+                            setCategoryActionSuccess('');
+                            setCategoryToDelete(null);
+                            setIsCategoryModalOpen(true);
+                          }}
+                          className="text-[9px] font-bold text-zinc-600 hover:text-zinc-900 uppercase tracking-widest cursor-pointer underline"
+                        >
+                          + Manage
+                        </button>
+                      )}
+                    </div>
                     <select
                       id="add-item-category"
                       value={formData.category}
@@ -975,7 +1231,7 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
                       }}
                       className="w-full px-3 py-2 border border-zinc-200 text-xs font-semibold focus:outline-none focus:border-zinc-900 bg-zinc-50 focus:bg-white text-zinc-850"
                     >
-                      {CATEGORIES.filter(c => c !== 'All').map(c => (
+                      {categoryNames.filter(c => c !== 'All').map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
@@ -1113,6 +1369,208 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Manage Categories Modal (Admin Access) */}
+      <AnimatePresence>
+        {isCategoryModalOpen && (
+          <div className="fixed inset-0 z-50 bg-zinc-900/40 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-4">
+            <div className="absolute inset-0 cursor-default" onClick={() => setIsCategoryModalOpen(false)}></div>
+
+            <motion.div
+              initial={{ scale: 0.98, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.98, opacity: 0 }}
+              className="bg-white w-full max-w-lg border border-zinc-200 overflow-hidden flex flex-col relative z-10 max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 bg-zinc-900 text-white">
+                    <Tag className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-widest text-zinc-900">
+                      Manage Item Categories
+                    </h3>
+                    <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">
+                      Admin Access • Rental Items Classification
+                    </span>
+                  </div>
+                </div>
+                <button
+                  id="btn-close-manage-categories"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="text-zinc-400 hover:text-zinc-900 p-1.5 transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-5 overflow-y-auto space-y-5 flex-1">
+                {categoryActionError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 p-3 text-[11px] font-bold uppercase tracking-wider flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{categoryActionError}</span>
+                  </div>
+                )}
+                {categoryActionSuccess && (
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 text-[11px] font-bold uppercase tracking-wider flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{categoryActionSuccess}</span>
+                  </div>
+                )}
+
+                {/* Add Category Form */}
+                <div className="bg-zinc-50 p-4 border border-zinc-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="input-new-category-name" className="text-[10px] font-black uppercase tracking-widest text-zinc-800 flex items-center gap-1.5">
+                      <Plus className="h-3.5 w-3.5 text-zinc-600" />
+                      Add New Category
+                    </label>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                      Real-time Sync
+                    </span>
+                  </div>
+                  <form onSubmit={handleAddCategory} className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      id="input-new-category-name"
+                      type="text"
+                      placeholder="e.g. Furniture, Tableware, Drone Equipment..."
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-zinc-200 text-xs font-semibold uppercase tracking-wider bg-white focus:outline-none focus:border-zinc-900 text-zinc-900 placeholder-zinc-400"
+                    />
+                    <button
+                      id="btn-submit-add-category"
+                      type="submit"
+                      disabled={!newCategoryName.trim()}
+                      className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white text-xs font-bold uppercase tracking-widest transition-colors cursor-pointer disabled:cursor-not-allowed shrink-0"
+                    >
+                      + Add Category
+                    </button>
+                  </form>
+                </div>
+
+                {/* Categories List */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center pb-2 border-b border-zinc-200">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                      Existing Categories ({categories.length})
+                    </span>
+                    <span className="text-[10px] text-zinc-400 uppercase tracking-wider">
+                      Assigned Assets
+                    </span>
+                  </div>
+
+                  {categories.length === 0 ? (
+                    <div className="py-8 text-center text-zinc-400 text-xs uppercase tracking-wider">
+                      No categories found. Add one above.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-zinc-100 border border-zinc-200 bg-white">
+                      {categories.map((cat) => {
+                        const count = getItemsCountForCategory(cat.name);
+                        const isSystem = cat.isSystem || cat.name === 'Corkage & Service Permits';
+
+                        return (
+                          <div
+                            key={cat.id}
+                            className="p-3 flex items-center justify-between gap-3 hover:bg-zinc-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs font-bold text-zinc-900 uppercase tracking-wider truncate">
+                                {cat.name}
+                              </span>
+                              {isSystem && (
+                                <span className="px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-widest bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                  Special Permit
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-[10px] font-mono font-semibold text-zinc-500 bg-zinc-100 px-2 py-0.5 border border-zinc-200">
+                                {count} {count === 1 ? 'item' : 'items'}
+                              </span>
+
+                              <button
+                                id={`btn-delete-cat-${cat.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setCategoryActionError('');
+                                  setCategoryActionSuccess('');
+                                  setCategoryToDelete(cat);
+                                }}
+                                className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                title={`Delete ${cat.name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Delete Confirmation Box */}
+                {categoryToDelete && (
+                  <div className="p-4 bg-red-50 border border-red-200 space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-red-800">
+                          Confirm Category Deletion
+                        </h4>
+                        <p className="text-[11px] text-red-700 mt-1">
+                          Are you sure you want to delete category <strong className="font-bold">"{categoryToDelete.name}"</strong>?
+                        </p>
+                        {getItemsCountForCategory(categoryToDelete.name) > 0 && (
+                          <div className="mt-2 p-2.5 bg-white/80 border border-red-300 text-[10px] font-semibold text-red-800 leading-relaxed">
+                            ⚠️ Notice: There are currently <strong className="font-mono">{getItemsCountForCategory(categoryToDelete.name)}</strong> rental asset(s) tagged under this category. Deleting it will keep the items in your inventory but reclassify their category to <strong className="uppercase">"Uncategorized"</strong>.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-red-200">
+                      <button
+                        type="button"
+                        onClick={() => setCategoryToDelete(null)}
+                        disabled={isDeletingCategory}
+                        className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-zinc-700 bg-white hover:bg-zinc-100 border border-zinc-300 transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        id="btn-confirm-delete-category-button"
+                        type="button"
+                        onClick={handleConfirmDeleteCategory}
+                        disabled={isDeletingCategory}
+                        className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white bg-red-600 hover:bg-red-700 transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        {isDeletingCategory ? 'Deleting...' : 'Yes, Delete Category'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-3 border-t border-zinc-200 bg-zinc-50 flex justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-widest transition-colors cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

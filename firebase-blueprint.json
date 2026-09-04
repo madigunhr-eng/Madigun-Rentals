@@ -89,6 +89,17 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "createdAt"]
+    },
+    "ItemCategory": {
+      "title": "ItemCategory",
+      "description": "Category classification for rental inventory items",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Category display name" },
+        "isSystem": { "type": "boolean", "description": "System protected category flag" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
     }
   },
   "firestore": {
@@ -111,6 +122,10 @@
     "/warehouses/{warehouseId}": {
       "schema": "Warehouse",
       "description": "Collection of all centralized warehouses"
+    },
+    "/categories/{categoryId}": {
+      "schema": "ItemCategory",
+      "description": "Collection of rental item category classifications"
     },
     "/users/{userId}": {
       "description": "Collection of authorized personnel login credentials"
