@@ -24,19 +24,21 @@ import {
   Zap,
   Menu,
   TrendingUp,
-  Building2
+  Building2,
+  Archive
 } from 'lucide-react';
 
 import { localStore } from './localStore';
 import { initFirestoreSync, subscribeFirestoreStatus } from './firebaseSync';
 import { initAutoBackupScheduler, subscribeDriveState, isDriveConnected } from './googleDrive';
-import { InventoryItem, Transmittal, TransmittalItem, DeletedLog, UserSession, UserProfile } from './types';
+import { InventoryItem, Transmittal, TransmittalItem, DeletedLog, UserSession, UserProfile, Warehouse } from './types';
 import { generateTransmittalNo } from './utils';
 
 // Import our components
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import InventoryList from './components/InventoryList';
+import DecommissionedList from './components/DecommissionedList';
 import TransmittalList from './components/TransmittalList';
 import CreateTransmittal from './components/CreateTransmittal';
 import DeletedLogsList from './components/DeletedLogsList';
@@ -60,7 +62,7 @@ export default function App() {
     }
     return null;
   });
-  const [view, setView] = useState<'dashboard' | 'inventory' | 'transmittals' | 'create-transmittal' | 'deleted-logs' | 'custodian-hub' | 'warehouse' | 'revenue' | 'rental-halls' | 'user-management'>(() => {
+  const [view, setView] = useState<'dashboard' | 'inventory' | 'transmittals' | 'create-transmittal' | 'deleted-logs' | 'custodian-hub' | 'warehouse' | 'revenue' | 'rental-halls' | 'user-management' | 'decommissioned'>(() => {
     const saved = localStorage.getItem('madigun_user_session');
     if (saved) {
       try {
@@ -73,6 +75,7 @@ export default function App() {
     return 'dashboard';
   });
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [transmittals, setTransmittals] = useState<Transmittal[]>([]);
   const [deletedLogs, setDeletedLogs] = useState<DeletedLog[]>([]);
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
@@ -83,6 +86,10 @@ export default function App() {
   const [isDriveConnectedState, setIsDriveConnectedState] = useState(isDriveConnected());
   const [isCloudSyncModalOpen, setIsCloudSyncModalOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  const decommissionedCount = React.useMemo(() => {
+    return inventory.filter(i => i.status === 'Retired' || i.status === 'Decommissioned').length;
+  }, [inventory]);
 
   const handleLogin = (session: UserSession) => {
     setCurrentUser(session);
@@ -160,7 +167,7 @@ export default function App() {
       setView('inventory');
     }
     if (currentUser && isFrontDesk) {
-      const allowedViews = ['inventory', 'transmittals', 'create-transmittal', 'rental-halls'];
+      const allowedViews = ['inventory', 'transmittals', 'create-transmittal', 'rental-halls', 'decommissioned'];
       if (!allowedViews.includes(view)) {
         setView('inventory');
       }
@@ -226,6 +233,11 @@ export default function App() {
       setPendingUsersCount(pendingCount);
     });
 
+    // 5. Listen to Warehouses
+    const unsubscribeWarehouses = localStore.subscribe<Warehouse>('warehouses', (wList) => {
+      setWarehouses(wList || []);
+    });
+
     return () => {
       if (cleanupFirestoreSync) cleanupFirestoreSync();
       if (cleanupFirestoreStatus) cleanupFirestoreStatus();
@@ -235,6 +247,7 @@ export default function App() {
       unsubscribeTransmittals();
       unsubscribeDeletedLogs();
       unsubscribeUsers();
+      unsubscribeWarehouses();
     };
   }, []);
 
@@ -816,6 +829,31 @@ export default function App() {
                     Rental Inventory Items
                   </button>
 
+                  <button
+                    id="mobile-nav-decommissioned"
+                    onClick={() => {
+                      setView('decommissioned');
+                      setIsMobileNavOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border ${
+                      view === 'decommissioned'
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Archive className="h-4 w-4 text-amber-600" />
+                      Decommissioned Items
+                    </span>
+                    {decommissionedCount > 0 && (
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 ${
+                        view === 'decommissioned' ? 'bg-amber-800 text-white' : 'bg-amber-100 text-amber-900'
+                      }`}>
+                        {decommissionedCount}
+                      </span>
+                    )}
+                  </button>
+
                   {!isFrontDesk && (
                     <button
                       onClick={() => {
@@ -984,6 +1022,28 @@ export default function App() {
                 Rental Items
               </button>
 
+              <button
+                id="tab-decommissioned"
+                onClick={() => setView('decommissioned')}
+                className={`pb-3 pt-3 px-1 border-b-2 text-xs font-bold uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5 ${
+                  view === 'decommissioned'
+                    ? 'text-amber-900 border-amber-600 font-extrabold'
+                    : 'border-transparent text-zinc-400 hover:text-amber-800'
+                }`}
+              >
+                <Archive className="h-3.5 w-3.5" />
+                <span>Decommissioned</span>
+                {decommissionedCount > 0 && (
+                  <span className={`text-[9px] font-mono px-1.5 py-0.5 border ${
+                    view === 'decommissioned' 
+                      ? 'bg-amber-100 text-amber-900 border-amber-300' 
+                      : 'bg-zinc-100 text-zinc-600 border-zinc-200'
+                  }`}>
+                    {decommissionedCount}
+                  </span>
+                )}
+              </button>
+
               {!isFrontDesk && (
                 <button
                   id="tab-warehouse"
@@ -1101,6 +1161,18 @@ export default function App() {
                   onDeleteItem={handleDeleteInventoryItem}
                   currentUser={currentUser}
                   onNewTransmittalClick={() => setView('create-transmittal')}
+                  onNavigateToDecommissioned={() => setView('decommissioned')}
+                />
+              )}
+
+              {view === 'decommissioned' && (
+                <DecommissionedList
+                  items={inventory}
+                  onUpdateItem={handleUpdateInventoryItem}
+                  onDeleteItem={handleDeleteInventoryItem}
+                  currentUser={currentUser}
+                  warehouses={warehouses}
+                  onNavigateToInventory={() => setView('inventory')}
                 />
               )}
 

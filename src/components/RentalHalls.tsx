@@ -66,7 +66,15 @@ export default function RentalHalls({
   const [renteeName, setRenteeName] = useState('');
   const [eventAddress, setEventAddress] = useState('');
   const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
-  const [rentalHours, setRentalHours] = useState<number>(4); // Default 4 hours
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Duration Mode: 'Days' (Multi-Day Rental) or 'Hours' (Hourly Rental)
+  const [durationMode, setDurationMode] = useState<'Days' | 'Hours'>('Days');
+  const [rentalDays, setRentalDays] = useState<number>(1);
+  const [rentalHours, setRentalHours] = useState<number>(4);
+  const [customDailyRate, setCustomDailyRate] = useState<number>(18000);
+  const [customHourlyRate, setCustomHourlyRate] = useState<number>(2500);
+
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -75,19 +83,26 @@ export default function RentalHalls({
   const [startTimeMinute, setStartTimeMinute] = useState<string>('00');
   const [startAmPm, setStartAmPm] = useState<'AM' | 'PM'>('AM');
 
+  // Exact Return/Check-in Time State (AM / PM)
+  const [endTimeHour, setEndTimeHour] = useState<number>(12);
+  const [endTimeMinute, setEndTimeMinute] = useState<string>('00');
+  const [endAmPm, setEndAmPm] = useState<'AM' | 'PM'>('PM');
+
   // Additional hourly items & corkage fees added to the booking
   const [extraItems, setExtraItems] = useState<{ itemId: string; quantity: number }[]>([]);
 
   // Extension Modal State
   const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
   const [selectedTxToExtend, setSelectedTxToExtend] = useState<Transmittal | null>(null);
+  const [extensionMode, setExtensionMode] = useState<'Days' | 'Hours'>('Days');
+  const [extensionDays, setExtensionDays] = useState<number>(1);
   const [extensionHours, setExtensionHours] = useState<number>(2);
-  const [extensionRate, setExtensionRate] = useState<number>(2500);
-  const [extensionReason, setExtensionReason] = useState('Guest requested extension of venue rental time');
+  const [extensionRate, setExtensionRate] = useState<number>(18000);
+  const [extensionReason, setExtensionReason] = useState('Guest requested extension of venue rental duration');
   const [isExtending, setIsExtending] = useState(false);
 
-  // Helper to check if a venue hall has an ongoing transmittal for a given date
-  const getOngoingBookingForVenue = (hall: InventoryItem, dateToCheck?: string) => {
+  // Helper to check if a venue hall has an ongoing transmittal for a given date range
+  const getOngoingBookingForVenue = (hall: InventoryItem, rangeStartStr?: string, rangeEndStr?: string) => {
     return transmittals.find(t => {
       if (t.status === 'Returned') return false;
 
@@ -98,43 +113,50 @@ export default function RentalHalls({
       );
 
       if (!matchesHall) return false;
+      if (!rangeStartStr) return true; // Any active transmittal for this hall
 
-      if (!dateToCheck) return true; // Any active transmittal for this hall
-
-      // Check date range overlap
+      // Check date interval overlap
       const txStart = t.dateCheckout ? t.dateCheckout.split(' ')[0].split('T')[0] : '';
-      const txEnd = t.dateCheckin ? t.dateCheckin.split(' ')[0].split('T')[0] : '';
+      const txEnd = t.dateCheckin ? t.dateCheckin.split(' ')[0].split('T')[0] : txStart;
 
       if (!txStart) return true;
+      const chkStart = rangeStartStr;
+      const chkEnd = rangeEndStr || rangeStartStr;
 
-      if (txEnd) {
-        return dateToCheck >= txStart && dateToCheck <= txEnd;
-      } else {
-        return dateToCheck === txStart;
-      }
+      // Interval overlap: [chkStart, chkEnd] overlaps [txStart, txEnd]
+      return chkStart <= txEnd && chkEnd >= txStart;
     });
   };
 
-  // Helper to calculate exact schedule start & end date/time formatted with AM/PM
-  const getFormattedScheduleTimes = (
-    dateStr: string, 
-    hour12: number, 
-    minuteStr: string, 
-    amPm: 'AM' | 'PM', 
-    durationHours: number
+  // Helper to calculate exact schedule start & end date/time formatted with AM/PM for both Days and Hours
+  const getScheduleDetails = (
+    mode: 'Days' | 'Hours',
+    startDateStr: string,
+    endDateStr: string,
+    h12Start: number,
+    minStartStr: string,
+    amPmStart: 'AM' | 'PM',
+    h12End: number,
+    minEndStr: string,
+    amPmEnd: 'AM' | 'PM',
+    daysCount: number,
+    hoursCount: number
   ) => {
-    const min = parseInt(minuteStr, 10) || 0;
-    let hour24 = hour12;
-    if (amPm === 'PM' && hour12 < 12) hour24 += 12;
-    if (amPm === 'AM' && hour12 === 12) hour24 = 0;
+    const minStart = parseInt(minStartStr, 10) || 0;
+    let hStart24 = h12Start;
+    if (amPmStart === 'PM' && h12Start < 12) hStart24 += 12;
+    if (amPmStart === 'AM' && h12Start === 12) hStart24 = 0;
 
-    const parts = (dateStr || '').split('-').map(Number);
-    const yyyy = parts[0] || 2026;
-    const mm = parts[1] || 1;
-    const dd = parts[2] || 1;
+    const startParts = (startDateStr || '').split('-').map(Number);
+    const sy = startParts[0] || 2026;
+    const sm = startParts[1] || 1;
+    const sd = startParts[2] || 1;
 
-    const startDate = new Date(yyyy, mm - 1, dd, hour24, min, 0);
-    const endDate = new Date(startDate.getTime() + durationHours * 60 * 60 * 1000);
+    const startDateTime = new Date(sy, sm - 1, sd, hStart24, minStart, 0);
+
+    let endDateTime: Date;
+    let effectiveHours: number;
+    let effectiveDays: number;
 
     const formatAmPmStr = (d: Date) => {
       let h = d.getHours();
@@ -153,19 +175,50 @@ export default function RentalHalls({
       return `${y}-${m}-${day}`;
     };
 
-    const startTimeDisplay = formatAmPmStr(startDate);
-    const endTimeDisplay = formatAmPmStr(endDate);
-    const startStr = `${dateStr} ${startTimeDisplay}`;
-    const endStr = `${formatDateOnly(endDate)} ${endTimeDisplay}`;
+    if (mode === 'Days') {
+      const days = Math.max(1, Number(daysCount) || 1);
+      effectiveDays = days;
+      effectiveHours = days * 24;
+
+      const minEnd = parseInt(minEndStr, 10) || 0;
+      let hEnd24 = h12End;
+      if (amPmEnd === 'PM' && h12End < 12) hEnd24 += 12;
+      if (amPmEnd === 'AM' && h12End === 12) hEnd24 = 0;
+
+      const endParts = (endDateStr || '').split('-').map(Number);
+      const ey = endParts[0] || sy;
+      const em = endParts[1] || sm;
+      const ed = endParts[2] || (sd + days);
+
+      endDateTime = new Date(ey, em - 1, ed, hEnd24, minEnd, 0);
+      if (endDateTime.getTime() <= startDateTime.getTime()) {
+        endDateTime = new Date(startDateTime.getTime() + days * 24 * 60 * 60 * 1000);
+      }
+    } else {
+      const hours = Math.max(1, Number(hoursCount) || 1);
+      effectiveHours = hours;
+      effectiveDays = Math.ceil(hours / 24);
+      endDateTime = new Date(startDateTime.getTime() + hours * 60 * 60 * 1000);
+    }
+
+    const startTimeDisplay = formatAmPmStr(startDateTime);
+    const endTimeDisplay = formatAmPmStr(endDateTime);
+    const startDateOnly = formatDateOnly(startDateTime);
+    const endDateOnly = formatDateOnly(endDateTime);
+    const startStr = `${startDateOnly} ${startTimeDisplay}`;
+    const endStr = `${endDateOnly} ${endTimeDisplay}`;
 
     return {
-      startDate,
-      endDate,
+      startDateTime,
+      endDateTime,
       startStr,
       endStr,
+      startDateOnly,
+      endDateOnly,
       startTimeDisplay,
       endTimeDisplay,
-      endDateOnly: formatDateOnly(endDate)
+      effectiveHours,
+      effectiveDays
     };
   };
 
@@ -187,9 +240,9 @@ export default function RentalHalls({
     // Check if transmittal contains any hall or hourly items
     const hasHallOrHourly = t.items.some(item => {
       const inv = inventory.find(i => i.id === item.itemId || i.sku === item.sku);
-      return inv?.category === 'Rental Halls & Event Venues' || inv?.isHourlyCharged || item.name.toLowerCase().includes('hall') || item.name.toLowerCase().includes('hrs');
+      return inv?.category === 'Rental Halls & Event Venues' || inv?.isHourlyCharged || item.name.toLowerCase().includes('hall') || item.name.toLowerCase().includes('hrs') || item.name.toLowerCase().includes('day');
     });
-    return hasHallOrHourly || t.notes.toLowerCase().includes('hall') || t.notes.toLowerCase().includes('hourly');
+    return hasHallOrHourly || t.notes.toLowerCase().includes('hall') || t.notes.toLowerCase().includes('hourly') || t.notes.toLowerCase().includes('multi-day');
   });
 
   // Other hourly rental items in inventory (non-hall items)
@@ -204,6 +257,7 @@ export default function RentalHalls({
     sku: `HALL-${Math.floor(1000 + Math.random() * 9000)}`,
     location: '',
     rentalPrice: 3000,
+    dailyRentalPrice: 20000,
   });
 
   // Open booking modal for a specific hall
@@ -211,12 +265,33 @@ export default function RentalHalls({
     setSelectedHall(hall);
     setRenteeName('');
     setEventAddress(hall.location || 'Madigun Hotel Event Premises');
-    setEventDate(new Date().toISOString().split('T')[0]);
+    const today = new Date().toISOString().split('T')[0];
+    setEventDate(today);
+
+    // Default to 1 day multi-day booking
+    const parts = today.split('-').map(Number);
+    const endD = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+    const ey = endD.getFullYear();
+    const em = (endD.getMonth() + 1).toString().padStart(2, '0');
+    const ed = endD.getDate().toString().padStart(2, '0');
+    setEndDate(`${ey}-${em}-${ed}`);
+
+    setDurationMode('Days');
+    setRentalDays(1);
+    setRentalHours(24);
     setStartTimeHour(9);
     setStartTimeMinute('00');
     setStartAmPm('AM');
-    setRentalHours(4);
-    setNotes(`Hourly Event Hall Rental: ${hall.name} (${hall.sku})`);
+    setEndTimeHour(12);
+    setEndTimeMinute('00');
+    setEndAmPm('PM');
+
+    const hourly = Number(hall.rentalPrice || 2500);
+    const daily = Number(hall.dailyRentalPrice || (hourly > 0 ? hourly * 8 : 18000));
+    setCustomHourlyRate(hourly);
+    setCustomDailyRate(daily);
+
+    setNotes(`Venue Rental: ${hall.name} (${hall.sku})`);
     setExtraItems([]);
     setErrorMsg('');
     setIsBookModalOpen(true);
@@ -225,19 +300,24 @@ export default function RentalHalls({
   // Open extension modal for an active transmittal
   const handleOpenExtendModal = (tx: Transmittal) => {
     setSelectedTxToExtend(tx);
+    setExtensionMode('Days');
+    setExtensionDays(1);
     setExtensionHours(2);
     
     // Find rate from items in transmittal
-    let defaultRate = 2500;
+    let defaultHourly = 2500;
+    let defaultDaily = 18000;
     for (const item of tx.items) {
       const invItem = inventory.find(i => i.id === item.itemId || i.sku === item.sku);
-      if (invItem && Number(invItem.rentalPrice) > 0) {
-        defaultRate = Number(invItem.rentalPrice);
+      if (invItem) {
+        if (Number(invItem.rentalPrice) > 0) defaultHourly = Number(invItem.rentalPrice);
+        if (Number(invItem.dailyRentalPrice) > 0) defaultDaily = Number(invItem.dailyRentalPrice);
+        else defaultDaily = defaultHourly * 8;
         break;
       }
     }
-    setExtensionRate(defaultRate);
-    setExtensionReason('Guest requested extension of venue rental hours');
+    setExtensionRate(defaultDaily);
+    setExtensionReason('Guest requested extension of venue rental duration');
     setErrorMsg('');
     setIsExtendModalOpen(true);
   };
@@ -248,45 +328,58 @@ export default function RentalHalls({
     if (!selectedHall) return;
     if (!renteeName.trim()) return setErrorMsg('Rentee / Guest name is required');
     if (!eventAddress.trim()) return setErrorMsg('Event location address is required');
-    if (rentalHours < 1) return setErrorMsg('Rental duration must be at least 1 hour');
 
-    // Check if venue has an ongoing transmittal for the selected date
-    const dateCollisionTx = getOngoingBookingForVenue(selectedHall, eventDate);
-    if (dateCollisionTx) {
-      return setErrorMsg(`CANNOT BOOK: Venue "${selectedHall.name}" already has an ongoing transmittal booking (${dateCollisionTx.transmittalNo} for ${dateCollisionTx.rentee}) for ${eventDate}.`);
+    if (durationMode === 'Days' && (rentalDays < 1)) {
+      return setErrorMsg('Rental duration must be at least 1 day');
+    }
+    if (durationMode === 'Hours' && (rentalHours < 1)) {
+      return setErrorMsg('Rental duration must be at least 1 hour');
     }
 
-    const schedule = getFormattedScheduleTimes(
-      eventDate, 
-      startTimeHour, 
-      startTimeMinute, 
-      startAmPm, 
-      Number(rentalHours)
+    const schedule = getScheduleDetails(
+      durationMode,
+      eventDate,
+      endDate,
+      startTimeHour,
+      startTimeMinute,
+      startAmPm,
+      endTimeHour,
+      endTimeMinute,
+      endAmPm,
+      rentalDays,
+      rentalHours
     );
 
-    const totalHours = Number(rentalHours);
-    const hallHourlyRate = Number(selectedHall.rentalPrice || 0);
+    // Check if venue has an ongoing transmittal for the selected date interval
+    const dateCollisionTx = getOngoingBookingForVenue(selectedHall, schedule.startDateOnly, schedule.endDateOnly);
+    if (dateCollisionTx) {
+      return setErrorMsg(`CANNOT BOOK: Venue "${selectedHall.name}" already has an ongoing transmittal booking (${dateCollisionTx.transmittalNo} for ${dateCollisionTx.rentee}) during ${schedule.startDateOnly} to ${schedule.endDateOnly}.`);
+    }
+
+    const hallDurationDesc = durationMode === 'Days'
+      ? `${rentalDays} Day(s) @ ₱${customDailyRate.toLocaleString()}/day`
+      : `${rentalHours} hrs @ ₱${customHourlyRate.toLocaleString()}/hr`;
 
     // Build items list for Transmittal
     const transmittalItems: TransmittalItem[] = [
       {
         itemId: selectedHall.id,
-        name: `${selectedHall.name} (${totalHours} hrs @ ₱${hallHourlyRate.toLocaleString()}/hr: ${schedule.startTimeDisplay} - ${schedule.endTimeDisplay})`,
+        name: `${selectedHall.name} (${hallDurationDesc}: ${schedule.startDateOnly} ${schedule.startTimeDisplay} - ${schedule.endDateOnly} ${schedule.endTimeDisplay})`,
         sku: selectedHall.sku,
         quantity: 1,
         returnedQuantity: 0
       }
     ];
 
-    // Add extra hourly items / corkage fees
+    // Add extra items / corkage fees
     extraItems.forEach(ei => {
       const invItem = inventory.find(i => i.id === ei.itemId);
       if (invItem && ei.quantity > 0) {
         const isHourly = invItem.isHourlyCharged;
         const rate = Number(invItem.rentalPrice || 0);
         const itemLabel = isHourly 
-          ? `${invItem.name} (${totalHours} hrs @ ₱${rate}/hr)`
-          : `${invItem.name} (₱${rate} flat fee)`;
+          ? `${invItem.name} (${durationMode === 'Days' ? `${rentalDays * 24} hrs` : `${rentalHours} hrs`} @ ₱${rate}/hr)`
+          : `${invItem.name} (₱${rate} fee)`;
 
         transmittalItems.push({
           itemId: invItem.id,
@@ -301,6 +394,10 @@ export default function RentalHalls({
     try {
       setIsSubmitting(true);
 
+      const bookingTypeLabel = durationMode === 'Days' 
+        ? `MULTI-DAY VENUE RENTAL (${rentalDays} Day(s))` 
+        : `HOURLY VENUE RENTAL (${rentalHours} Hours)`;
+
       await onSubmitTransmittal({
         handler: handlerName,
         rentee: renteeName,
@@ -308,12 +405,12 @@ export default function RentalHalls({
         dateCheckout: schedule.startStr,
         dateCheckin: schedule.endStr,
         items: transmittalItems,
-        notes: `HOURLY HALL RENTAL (${totalHours} Hours: ${schedule.startTimeDisplay} to ${schedule.endTimeDisplay} on ${eventDate}). Estimated Revenue: ₱${calculateGrandTotal().toLocaleString()}. ${notes}`
+        notes: `${bookingTypeLabel} from ${schedule.startStr} to ${schedule.endStr}. Estimated Total: ₱${calculateGrandTotal().toLocaleString()}. ${notes}`
       });
 
       setIsBookModalOpen(false);
       setIsSubmitting(false);
-      setSuccessMsg(`Booking confirmed for ${selectedHall.name} (${schedule.startTimeDisplay} - ${schedule.endTimeDisplay})! Redirecting to Transmittals...`);
+      setSuccessMsg(`Booking confirmed for ${selectedHall.name} (${schedule.startStr} - ${schedule.endStr})! Redirecting to Transmittals...`);
       setTimeout(() => {
         onNavigateToTransmittals();
       }, 1500);
@@ -324,26 +421,40 @@ export default function RentalHalls({
     }
   };
 
-  // Confirm rental hours extension
+  // Confirm rental duration extension (Days or Hours)
   const handleConfirmExtension = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTxToExtend) return;
-    if (extensionHours < 1) return setErrorMsg('Extension hours must be at least 1 hour');
-    if (extensionRate < 0) return setErrorMsg('Hourly rate must be a valid non-negative number');
+    
+    let totalExtCost = 0;
+    let addlHours = 0;
+    let modeLabel = '';
 
-    const totalExtCost = extensionHours * extensionRate;
+    if (extensionMode === 'Days') {
+      if (extensionDays < 1) return setErrorMsg('Extension days must be at least 1 day');
+      totalExtCost = extensionDays * extensionRate;
+      addlHours = extensionDays * 24;
+      modeLabel = `+${extensionDays} Day(s)`;
+    } else {
+      if (extensionHours < 1) return setErrorMsg('Extension hours must be at least 1 hour');
+      totalExtCost = extensionHours * extensionRate;
+      addlHours = extensionHours;
+      modeLabel = `+${extensionHours} Hour(s)`;
+    }
+
+    if (extensionRate < 0) return setErrorMsg('Rate must be a valid non-negative number');
 
     try {
       setIsExtending(true);
       if (onExtendTransmittal) {
-        await onExtendTransmittal(selectedTxToExtend.id, extensionHours, totalExtCost, extensionReason);
+        await onExtendTransmittal(selectedTxToExtend.id, addlHours, totalExtCost, `${modeLabel} - ${extensionReason}`);
       }
       setIsExtendModalOpen(false);
       setIsExtending(false);
-      setSuccessMsg(`Successfully extended ${selectedTxToExtend.transmittalNo} by +${extensionHours} Hour(s) (+₱${totalExtCost.toLocaleString()})!`);
+      setSuccessMsg(`Successfully extended ${selectedTxToExtend.transmittalNo} by ${modeLabel} (+₱${totalExtCost.toLocaleString()})!`);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
-      setErrorMsg('Failed to extend rental hours: ' + err.message);
+      setErrorMsg('Failed to extend rental duration: ' + err.message);
       setIsExtending(false);
     }
   };
@@ -351,17 +462,25 @@ export default function RentalHalls({
   // Calculate booking breakdown
   const calculateHallTotal = () => {
     if (!selectedHall) return 0;
-    return Number(selectedHall.rentalPrice || 0) * Number(rentalHours || 1);
+    if (durationMode === 'Days') {
+      return Number(customDailyRate || 0) * Math.max(1, Number(rentalDays) || 1);
+    } else {
+      return Number(customHourlyRate || 0) * Math.max(1, Number(rentalHours) || 1);
+    }
   };
 
   const calculateExtrasTotal = () => {
     let sum = 0;
+    const durationMultiplier = durationMode === 'Days' 
+      ? Math.max(1, Number(rentalDays) || 1) 
+      : Math.max(1, Number(rentalHours) || 1);
+
     extraItems.forEach(ei => {
       const item = inventory.find(i => i.id === ei.itemId);
       if (item) {
         const rate = Number(item.rentalPrice || 0);
         if (item.isHourlyCharged) {
-          sum += rate * Number(rentalHours || 1) * ei.quantity;
+          sum += rate * (durationMode === 'Days' ? (durationMultiplier * 24) : durationMultiplier) * ei.quantity;
         } else {
           sum += rate * ei.quantity;
         }
@@ -388,10 +507,11 @@ export default function RentalHalls({
         status: 'In Stock',
         location: newHallData.location || 'Madigun Hotel Events Center',
         rentalPrice: Number(newHallData.rentalPrice || 0),
+        dailyRentalPrice: Number(newHallData.dailyRentalPrice || 0),
         price: 0,
         isHourlyCharged: true,
         isNoQuantity: true,
-        chargeType: 'Hourly'
+        chargeType: 'Daily'
       });
       setIsAddModalOpen(false);
       setSuccessMsg(`Added new event venue: ${newHallData.name}`);
@@ -555,7 +675,8 @@ export default function RentalHalls({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {halls.map((hall) => {
-            const rate = Number(hall.rentalPrice || 0);
+            const hourlyRate = Number(hall.rentalPrice || 0);
+            const dailyRate = Number(hall.dailyRentalPrice || (hourlyRate > 0 ? hourlyRate * 8 : 18000));
             const ongoingTx = getOngoingBookingForVenue(hall);
 
             return (
@@ -573,7 +694,7 @@ export default function RentalHalls({
                       </span>
                     ) : (
                       <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider border bg-amber-50 text-amber-900 border-amber-200">
-                        Hourly Venue
+                        Daily & Hourly Venue
                       </span>
                     )}
 
@@ -620,14 +741,26 @@ export default function RentalHalls({
                     </div>
                   )}
 
-                  {/* Hourly Rate Price Box */}
-                  <div className="mt-4 bg-amber-50/50 p-3 border border-amber-200/80 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-zinc-950 font-bold text-xs uppercase tracking-wider">
-                      <Clock className="h-4 w-4 text-amber-700" />
-                      Hourly Billing Basis:
+                  {/* Dual Pricing Box (Daily & Hourly) */}
+                  <div className="mt-4 bg-amber-50/50 p-3 border border-amber-200/80 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-zinc-950 font-bold text-xs uppercase tracking-wider">
+                        <Calendar className="h-3.5 w-3.5 text-amber-700" />
+                        Daily Rate:
+                      </span>
+                      <span className="font-mono font-black text-emerald-700 text-sm">
+                        ₱{dailyRate.toLocaleString()} <span className="text-[10px] text-zinc-500 font-normal">/ day</span>
+                      </span>
                     </div>
-                    <div className="text-right font-mono font-black text-emerald-700 text-sm">
-                      ₱{rate.toLocaleString()} <span className="text-[10px] text-zinc-500 font-normal">/ hour</span>
+
+                    <div className="flex items-center justify-between border-t border-amber-200/50 pt-1.5">
+                      <span className="flex items-center gap-1.5 text-zinc-700 font-semibold text-xs uppercase tracking-wider">
+                        <Clock className="h-3.5 w-3.5 text-zinc-500" />
+                        Hourly Rate:
+                      </span>
+                      <span className="font-mono font-bold text-zinc-800 text-xs">
+                        ₱{hourlyRate.toLocaleString()} <span className="text-[9px] text-zinc-500 font-normal">/ hr</span>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -679,12 +812,12 @@ export default function RentalHalls({
                 <div className="flex items-center gap-2">
                   <Clock className="h-5 w-5 text-amber-600" />
                   <h2 className="text-base font-black text-zinc-900 uppercase tracking-wider">
-                    Extend Venue Rental Hours
+                    Extend Venue Rental Duration
                   </h2>
                 </div>
                 <button
                   onClick={() => setIsExtendModalOpen(false)}
-                  className="text-zinc-400 hover:text-zinc-900"
+                  className="text-zinc-400 hover:text-zinc-900 cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -709,60 +842,177 @@ export default function RentalHalls({
                 </div>
               </div>
 
+              {/* Extension Mode Toggle (Days vs Hours) */}
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">
+                  Extension Type
+                </label>
+                <div className="grid grid-cols-2 p-1 bg-zinc-100 border border-zinc-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtensionMode('Days');
+                      let defaultDaily = 18000;
+                      for (const item of selectedTxToExtend.items) {
+                        const invItem = inventory.find(i => i.id === item.itemId || i.sku === item.sku);
+                        if (invItem) {
+                          if (Number(invItem.dailyRentalPrice) > 0) defaultDaily = Number(invItem.dailyRentalPrice);
+                          else if (Number(invItem.rentalPrice) > 0) defaultDaily = Number(invItem.rentalPrice) * 8;
+                          break;
+                        }
+                      }
+                      setExtensionRate(defaultDaily);
+                    }}
+                    className={`py-1.5 px-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                      extensionMode === 'Days'
+                        ? 'bg-zinc-900 text-white shadow-xs'
+                        : 'text-zinc-600 hover:text-zinc-900'
+                    }`}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-amber-500" />
+                    Extend By Days
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtensionMode('Hours');
+                      let defaultHourly = 2500;
+                      for (const item of selectedTxToExtend.items) {
+                        const invItem = inventory.find(i => i.id === item.itemId || i.sku === item.sku);
+                        if (invItem && Number(invItem.rentalPrice) > 0) {
+                          defaultHourly = Number(invItem.rentalPrice);
+                          break;
+                        }
+                      }
+                      setExtensionRate(defaultHourly);
+                    }}
+                    className={`py-1.5 px-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                      extensionMode === 'Hours'
+                        ? 'bg-zinc-900 text-white shadow-xs'
+                        : 'text-zinc-600 hover:text-zinc-900'
+                    }`}
+                  >
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    Extend By Hours
+                  </button>
+                </div>
+              </div>
+
               <form onSubmit={handleConfirmExtension} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1">
-                    Extension Duration (Additional Hours) *
-                  </label>
-                  <input
-                    id="input-extension-hours"
-                    type="number"
-                    min="1"
-                    max="48"
-                    required
-                    value={extensionHours}
-                    onChange={(e) => setExtensionHours(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-zinc-300 font-mono font-bold text-xs bg-zinc-50 text-zinc-950"
-                  />
-                </div>
+                {extensionMode === 'Days' ? (
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1">
+                        Extension Duration (Additional Days) *
+                      </label>
+                      <input
+                        id="input-extension-days"
+                        type="number"
+                        min="1"
+                        max="365"
+                        required
+                        value={extensionDays}
+                        onChange={(e) => setExtensionDays(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-3 py-2 border border-zinc-300 font-mono font-bold text-xs bg-zinc-50 text-zinc-950"
+                      />
+                    </div>
 
-                {/* Quick Presets */}
-                <div>
-                  <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
-                    Quick Choose Additional Hours
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {[1, 2, 3, 4, 6, 8].map((hrs) => (
-                      <button
-                        key={hrs}
-                        type="button"
-                        onClick={() => setExtensionHours(hrs)}
-                        className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition-all ${
-                          extensionHours === hrs
-                            ? 'bg-zinc-900 text-white border-zinc-900'
-                            : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                        }`}
-                      >
-                        +{hrs} Hour{hrs > 1 ? 's' : ''}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                    {/* Quick Presets for Days */}
+                    <div>
+                      <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
+                        Quick Choose Days
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 5, 7, 14].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setExtensionDays(d)}
+                            className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition-all ${
+                              extensionDays === d
+                                ? 'bg-zinc-900 text-white border-zinc-900'
+                                : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                            }`}
+                          >
+                            +{d} Day{d > 1 ? 's' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
-                    Hourly Extension Rate (₱ / hour) *
-                  </label>
-                  <input
-                    id="input-extension-rate"
-                    type="number"
-                    min="0"
-                    required
-                    value={extensionRate}
-                    onChange={(e) => setExtensionRate(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-zinc-200 font-mono font-bold text-xs bg-zinc-50 text-zinc-900"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                        Daily Extension Rate (₱ / day) *
+                      </label>
+                      <input
+                        id="input-extension-rate-daily"
+                        type="number"
+                        min="0"
+                        required
+                        value={extensionRate}
+                        onChange={(e) => setExtensionRate(Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-zinc-200 font-mono font-bold text-xs bg-zinc-50 text-zinc-900"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1">
+                        Extension Duration (Additional Hours) *
+                      </label>
+                      <input
+                        id="input-extension-hours"
+                        type="number"
+                        min="1"
+                        max="168"
+                        required
+                        value={extensionHours}
+                        onChange={(e) => setExtensionHours(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-3 py-2 border border-zinc-300 font-mono font-bold text-xs bg-zinc-50 text-zinc-950"
+                      />
+                    </div>
+
+                    {/* Quick Presets for Hours */}
+                    <div>
+                      <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
+                        Quick Choose Additional Hours
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 4, 6, 8, 12, 24].map((hrs) => (
+                          <button
+                            key={hrs}
+                            type="button"
+                            onClick={() => setExtensionHours(hrs)}
+                            className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition-all ${
+                              extensionHours === hrs
+                                ? 'bg-zinc-900 text-white border-zinc-900'
+                                : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                            }`}
+                          >
+                            +{hrs} Hour{hrs > 1 ? 's' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                        Hourly Extension Rate (₱ / hour) *
+                      </label>
+                      <input
+                        id="input-extension-rate-hourly"
+                        type="number"
+                        min="0"
+                        required
+                        value={extensionRate}
+                        onChange={(e) => setExtensionRate(Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-zinc-200 font-mono font-bold text-xs bg-zinc-50 text-zinc-900"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
@@ -771,7 +1021,7 @@ export default function RentalHalls({
                   <input
                     id="input-extension-reason"
                     type="text"
-                    placeholder="e.g. Guest extended event by 2 hours"
+                    placeholder="e.g. Guest extended event duration"
                     value={extensionReason}
                     onChange={(e) => setExtensionReason(e.target.value)}
                     className="w-full px-3 py-2 border border-zinc-200 text-xs font-semibold focus:outline-none focus:border-zinc-900 bg-zinc-50 text-zinc-850"
@@ -782,11 +1032,18 @@ export default function RentalHalls({
                 <div className="bg-zinc-950 text-white p-4 border border-zinc-800 space-y-1">
                   <div className="flex justify-between text-xs text-zinc-300 font-semibold">
                     <span>Extension Charge:</span>
-                    <span className="font-mono">+{extensionHours} hr(s) × ₱{extensionRate.toLocaleString()}/hr</span>
+                    <span className="font-mono">
+                      {extensionMode === 'Days' 
+                        ? `+${extensionDays} day(s) × ₱${extensionRate.toLocaleString()}/day`
+                        : `+${extensionHours} hr(s) × ₱${extensionRate.toLocaleString()}/hr`
+                      }
+                    </span>
                   </div>
                   <div className="flex justify-between items-center text-sm font-black uppercase tracking-wider text-emerald-400 border-t border-zinc-800 pt-2">
                     <span>Additional Fee Total:</span>
-                    <span className="font-mono text-base text-emerald-300">₱{(extensionHours * extensionRate).toLocaleString()}</span>
+                    <span className="font-mono text-base text-emerald-300">
+                      ₱{(extensionMode === 'Days' ? extensionDays * extensionRate : extensionHours * extensionRate).toLocaleString()}
+                    </span>
                   </div>
                 </div>
 
@@ -813,7 +1070,7 @@ export default function RentalHalls({
         )}
       </AnimatePresence>
 
-      {/* Hourly Hall Rental Booking Modal */}
+      {/* Hall Rental Booking Modal (Multi-Day & Hourly) */}
       <AnimatePresence>
         {isBookModalOpen && selectedHall && (
           <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -821,23 +1078,28 @@ export default function RentalHalls({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border border-zinc-200 max-w-2xl w-full p-6 shadow-2xl space-y-6 my-8"
+              className="bg-white border border-zinc-200 max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8"
             >
               <div className="flex justify-between items-start border-b border-zinc-200 pb-4">
                 <div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-900 bg-amber-100 px-2 py-0.5 border border-amber-300">
-                    Event Venue Booking
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-900 bg-amber-100 px-2 py-0.5 border border-amber-300">
+                      Event Venue Booking
+                    </span>
+                    <span className="text-[10px] font-bold text-zinc-500 font-mono">
+                      SKU: {selectedHall.sku}
+                    </span>
+                  </div>
                   <h2 className="text-lg font-black font-display text-zinc-900 uppercase tracking-wider mt-1">
                     Rent {selectedHall.name}
                   </h2>
                   <p className="text-xs text-zinc-500 font-mono mt-0.5">
-                    SKU: {selectedHall.sku} • Base Rate: ₱{Number(selectedHall.rentalPrice || 0).toLocaleString()} / hour
+                    Standard Rates: ₱{customDailyRate.toLocaleString()} / day • ₱{customHourlyRate.toLocaleString()} / hr
                   </p>
                 </div>
                 <button
                   onClick={() => setIsBookModalOpen(false)}
-                  className="p-1 text-zinc-400 hover:text-zinc-900 transition-colors"
+                  className="p-1 text-zinc-400 hover:text-zinc-900 transition-colors cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -850,8 +1112,9 @@ export default function RentalHalls({
                 </div>
               )}
 
-              <form onSubmit={handleConfirmBooking} className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <form onSubmit={handleConfirmBooking} className="space-y-4">
+                {/* Rentee & Handler Details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
                       Rentee / Guest Name *
@@ -882,54 +1145,211 @@ export default function RentalHalls({
                   </div>
                 </div>
 
-                {/* Date Selection, AM/PM Exact Start Time & Collision Warning */}
-                {(() => {
-                  const ongoingCollision = getOngoingBookingForVenue(selectedHall, eventDate);
-                  const schedule = getFormattedScheduleTimes(eventDate, startTimeHour, startTimeMinute, startAmPm, Number(rentalHours));
+                <div>
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                    Event Venue Location *
+                  </label>
+                  <input
+                    id="input-location-booking"
+                    type="text"
+                    required
+                    value={eventAddress}
+                    onChange={(e) => setEventAddress(e.target.value)}
+                    className="w-full px-3 py-2 border border-zinc-200 text-xs font-semibold focus:outline-none focus:border-zinc-900 bg-zinc-50 focus:bg-white text-zinc-850"
+                  />
+                </div>
 
-                  return (
-                    <div className="space-y-4">
-                      {ongoingCollision && (
-                        <div className="p-3.5 bg-red-50 border border-red-300 text-red-900 text-xs font-semibold space-y-1">
-                          <div className="font-bold flex items-center text-red-700 uppercase tracking-wider">
-                            <AlertCircle className="h-4 w-4 mr-1.5 shrink-0" />
-                            VENUE UNAVAILABLE FOR SELECTED DATE ({eventDate})
-                          </div>
-                          <p className="text-[11px] text-red-800">
-                            This venue already has an ONGOING transmittal booking (<span className="font-mono font-bold text-red-950">{ongoingCollision.transmittalNo}</span> for <span className="font-bold">{ongoingCollision.rentee}</span>) for this date.
-                          </p>
-                          <div className="text-[10px] text-red-700 font-mono">
-                            Reserved Period: {ongoingCollision.dateCheckout} ➔ {ongoingCollision.dateCheckin}
-                          </div>
+                {/* Duration Mode Selection: Multi-Day vs Hourly */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest">
+                      Rental Duration Mode *
+                    </label>
+                    <span className="text-[10px] text-zinc-500 font-semibold">
+                      {durationMode === 'Days' ? 'Rent for multiple days (24h+)' : 'Rent for specific hours'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 p-1 bg-zinc-100 border border-zinc-200">
+                    <button
+                      id="tab-duration-days"
+                      type="button"
+                      onClick={() => {
+                        setDurationMode('Days');
+                        const parts = eventDate.split('-').map(Number);
+                        const d = new Date(parts[0], parts[1] - 1, parts[2] + (rentalDays || 1));
+                        const y = d.getFullYear();
+                        const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                        const day = d.getDate().toString().padStart(2, '0');
+                        setEndDate(`${y}-${m}-${day}`);
+                      }}
+                      className={`py-2 px-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                        durationMode === 'Days'
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/70'
+                      }`}
+                    >
+                      <Calendar className="h-4 w-4 text-amber-500" />
+                      Rent By Days (Multi-Day)
+                    </button>
+
+                    <button
+                      id="tab-duration-hours"
+                      type="button"
+                      onClick={() => setDurationMode('Hours')}
+                      className={`py-2 px-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                        durationMode === 'Hours'
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/70'
+                      }`}
+                    >
+                      <Clock className="h-4 w-4 text-amber-500" />
+                      Rent By Hours (Hourly)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Duration Inputs based on Mode */}
+                {durationMode === 'Days' ? (
+                  <div className="space-y-3.5 p-3.5 bg-amber-50/40 border border-amber-200/80">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-900 flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-amber-700" />
+                        Multi-Day Booking Parameters
+                      </span>
+                      <span className="text-[10px] text-amber-800 font-mono font-bold bg-amber-100 px-2 py-0.5 border border-amber-300">
+                        No 24-Hour Limit
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1">
+                          Rental Duration (Number of Days) *
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            id="input-rental-days"
+                            type="number"
+                            min="1"
+                            max="365"
+                            required
+                            value={rentalDays}
+                            onChange={(e) => {
+                              const val = Math.max(1, Number(e.target.value));
+                              setRentalDays(val);
+                              const parts = eventDate.split('-').map(Number);
+                              const d = new Date(parts[0], parts[1] - 1, parts[2] + val);
+                              const y = d.getFullYear();
+                              const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                              const day = d.getDate().toString().padStart(2, '0');
+                              setEndDate(`${y}-${m}-${day}`);
+                            }}
+                            className="w-28 px-3 py-2 border border-zinc-300 text-sm font-mono font-black focus:outline-none focus:border-zinc-900 bg-white text-zinc-950"
+                          />
+                          <span className="text-xs font-bold text-zinc-700 uppercase">
+                            Day{rentalDays > 1 ? 's' : ''} ({rentalDays * 24} hrs)
+                          </span>
                         </div>
-                      )}
+                      </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1 flex items-center justify-between">
+                          <span>Daily Rate (₱ / day) *</span>
+                          <span className="text-[9px] text-zinc-400 font-normal font-sans">Adjustable</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-xs font-mono font-bold text-zinc-400">₱</span>
+                          <input
+                            id="input-custom-daily-rate"
+                            type="number"
+                            min="0"
+                            required
+                            value={customDailyRate}
+                            onChange={(e) => setCustomDailyRate(Number(e.target.value))}
+                            className="w-full pl-7 pr-3 py-2 border border-zinc-300 text-xs font-mono font-bold focus:outline-none focus:border-zinc-900 bg-white text-zinc-950"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Presets for Days */}
+                    <div>
+                      <span className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">
+                        Quick Choose Days
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { days: 1, label: '1 Day (24h)' },
+                          { days: 2, label: '2 Days' },
+                          { days: 3, label: '3 Days' },
+                          { days: 4, label: '4 Days' },
+                          { days: 5, label: '5 Days' },
+                          { days: 7, label: '7 Days (1 Wk)' },
+                          { days: 10, label: '10 Days' },
+                          { days: 14, label: '14 Days (2 Wks)' },
+                          { days: 30, label: '30 Days (1 Mo)' }
+                        ].map(({ days, label }) => (
+                          <button
+                            key={days}
+                            type="button"
+                            onClick={() => {
+                              setRentalDays(days);
+                              const parts = eventDate.split('-').map(Number);
+                              const d = new Date(parts[0], parts[1] - 1, parts[2] + days);
+                              const y = d.getFullYear();
+                              const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                              const day = d.getDate().toString().padStart(2, '0');
+                              setEndDate(`${y}-${m}-${day}`);
+                            }}
+                            className={`px-2.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition-all ${
+                              rentalDays === days
+                                ? 'bg-zinc-900 text-white border-zinc-900'
+                                : 'bg-white text-zinc-700 border-zinc-200 hover:bg-amber-100 hover:border-amber-300'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Date Pickers & Exact Times */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-amber-200/80 pt-3">
+                      <div className="space-y-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
-                            Event Date *
+                          <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1">
+                            Start Date *
                           </label>
                           <input
-                            id="input-event-date-booking"
+                            id="input-start-date-days"
                             type="date"
                             required
                             value={eventDate}
-                            onChange={(e) => setEventDate(e.target.value)}
-                            className="w-full px-3 py-2 border border-zinc-200 text-xs font-semibold focus:outline-none focus:border-zinc-900 bg-zinc-50 focus:bg-white text-zinc-850 font-mono"
+                            onChange={(e) => {
+                              const newStart = e.target.value;
+                              setEventDate(newStart);
+                              const parts = newStart.split('-').map(Number);
+                              const d = new Date(parts[0], parts[1] - 1, parts[2] + (rentalDays || 1));
+                              const y = d.getFullYear();
+                              const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                              const day = d.getDate().toString().padStart(2, '0');
+                              setEndDate(`${y}-${m}-${day}`);
+                            }}
+                            className="w-full px-3 py-2 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950 focus:outline-none focus:border-zinc-900"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-[10px] font-bold text-zinc-800 uppercase tracking-widest mb-1 flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-amber-700" />
-                            Exact Start Time (AM / PM) *
+                          <label className="block text-[10px] font-bold text-zinc-700 uppercase tracking-widest mb-1 flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-amber-700" /> Start Time (AM / PM)
                           </label>
                           <div className="flex items-center gap-1.5">
                             <select
-                              id="select-start-hour"
+                              id="select-start-hour-days"
                               value={startTimeHour}
                               onChange={(e) => setStartTimeHour(Number(e.target.value))}
-                              className="px-2.5 py-2 border border-zinc-300 text-xs font-mono font-bold bg-zinc-50 text-zinc-950 focus:bg-white focus:outline-none focus:border-zinc-900"
+                              className="px-2 py-1.5 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950"
                             >
                               {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
                                 <option key={h} value={h}>{h.toString().padStart(2, '0')}</option>
@@ -937,10 +1357,10 @@ export default function RentalHalls({
                             </select>
                             <span className="font-bold text-zinc-400 font-mono">:</span>
                             <select
-                              id="select-start-minute"
+                              id="select-start-min-days"
                               value={startTimeMinute}
                               onChange={(e) => setStartTimeMinute(e.target.value)}
-                              className="px-2.5 py-2 border border-zinc-300 text-xs font-mono font-bold bg-zinc-50 text-zinc-950 focus:bg-white focus:outline-none focus:border-zinc-900"
+                              className="px-2 py-1.5 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950"
                             >
                               {['00', '15', '30', '45'].map(m => (
                                 <option key={m} value={m}>{m}</option>
@@ -950,14 +1370,14 @@ export default function RentalHalls({
                               <button
                                 type="button"
                                 onClick={() => setStartAmPm('AM')}
-                                className={`px-3 py-2 cursor-pointer transition-colors ${startAmPm === 'AM' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+                                className={`px-2.5 py-1.5 cursor-pointer ${startAmPm === 'AM' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-100'}`}
                               >
                                 AM
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setStartAmPm('PM')}
-                                className={`px-3 py-2 cursor-pointer transition-colors ${startAmPm === 'PM' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+                                className={`px-2.5 py-1.5 cursor-pointer ${startAmPm === 'PM' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-100'}`}
                               >
                                 PM
                               </button>
@@ -966,64 +1386,264 @@ export default function RentalHalls({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-zinc-800 uppercase tracking-widest mb-1 flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-amber-700" />
-                            Rental Duration (Hours) *
+                          <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1 flex items-center justify-between">
+                            <span>Check-in / Return Date *</span>
+                            <span className="text-[9px] text-zinc-400 font-normal font-sans">Synced with days</span>
                           </label>
                           <input
-                            id="input-rental-hours-booking"
-                            type="number"
-                            min="1"
-                            max="168"
+                            id="input-end-date-days"
+                            type="date"
                             required
-                            value={rentalHours}
-                            onChange={(e) => setRentalHours(Number(e.target.value))}
-                            className="w-full px-3 py-2 border border-zinc-300 text-xs font-mono font-bold focus:outline-none focus:border-zinc-900 bg-zinc-50 text-zinc-950"
+                            value={endDate}
+                            onChange={(e) => {
+                              const newEnd = e.target.value;
+                              setEndDate(newEnd);
+                              const s = new Date(eventDate).getTime();
+                              const en = new Date(newEnd).getTime();
+                              if (!isNaN(s) && !isNaN(en) && en > s) {
+                                const diff = Math.max(1, Math.round((en - s) / (1000 * 60 * 60 * 24)));
+                                setRentalDays(diff);
+                              }
+                            }}
+                            className="w-full px-3 py-2 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950 focus:outline-none focus:border-zinc-900"
                           />
                         </div>
 
                         <div>
-                          <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
-                            Quick Choose Duration
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {[2, 4, 6, 8, 12, 24].map((hrs) => (
+                          <label className="block text-[10px] font-bold text-zinc-700 uppercase tracking-widest mb-1 flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-amber-700" /> Return Time (AM / PM)
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              id="select-end-hour-days"
+                              value={endTimeHour}
+                              onChange={(e) => setEndTimeHour(Number(e.target.value))}
+                              className="px-2 py-1.5 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950"
+                            >
+                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
+                                <option key={h} value={h}>{h.toString().padStart(2, '0')}</option>
+                              ))}
+                            </select>
+                            <span className="font-bold text-zinc-400 font-mono">:</span>
+                            <select
+                              id="select-end-min-days"
+                              value={endTimeMinute}
+                              onChange={(e) => setEndTimeMinute(e.target.value)}
+                              className="px-2 py-1.5 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950"
+                            >
+                              {['00', '15', '30', '45'].map(m => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
+                            <div className="flex items-center border border-zinc-300 overflow-hidden font-mono font-bold text-xs ml-1">
                               <button
-                                key={hrs}
                                 type="button"
-                                onClick={() => setRentalHours(hrs)}
-                                className={`px-2.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition-all ${
-                                  rentalHours === hrs
-                                    ? 'bg-zinc-900 text-white border-zinc-900'
-                                    : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                                }`}
+                                onClick={() => setEndAmPm('AM')}
+                                className={`px-2.5 py-1.5 cursor-pointer ${endAmPm === 'AM' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-100'}`}
                               >
-                                {hrs}h
+                                AM
                               </button>
-                            ))}
+                              <button
+                                type="button"
+                                onClick={() => setEndAmPm('PM')}
+                                className={`px-2.5 py-1.5 cursor-pointer ${endAmPm === 'PM' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-100'}`}
+                              >
+                                PM
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Hourly Duration Controls */
+                  <div className="space-y-3.5 p-3.5 bg-zinc-50 border border-zinc-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1">
+                          Event Date *
+                        </label>
+                        <input
+                          id="input-event-date-hourly"
+                          type="date"
+                          required
+                          value={eventDate}
+                          onChange={(e) => setEventDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950 focus:outline-none focus:border-zinc-900"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1 flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-amber-700" />
+                          Start Time (AM / PM) *
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            id="select-start-hour-hourly"
+                            value={startTimeHour}
+                            onChange={(e) => setStartTimeHour(Number(e.target.value))}
+                            className="px-2 py-1.5 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950"
+                          >
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
+                              <option key={h} value={h}>{h.toString().padStart(2, '0')}</option>
+                            ))}
+                          </select>
+                          <span className="font-bold text-zinc-400 font-mono">:</span>
+                          <select
+                            id="select-start-min-hourly"
+                            value={startTimeMinute}
+                            onChange={(e) => setStartTimeMinute(e.target.value)}
+                            className="px-2 py-1.5 border border-zinc-300 text-xs font-mono font-bold bg-white text-zinc-950"
+                          >
+                            {['00', '15', '30', '45'].map(m => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <div className="flex items-center border border-zinc-300 overflow-hidden font-mono font-bold text-xs ml-1">
+                            <button
+                              type="button"
+                              onClick={() => setStartAmPm('AM')}
+                              className={`px-2.5 py-1.5 cursor-pointer ${startAmPm === 'AM' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-100'}`}
+                            >
+                              AM
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setStartAmPm('PM')}
+                              className={`px-2.5 py-1.5 cursor-pointer ${startAmPm === 'PM' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-100'}`}
+                            >
+                              PM
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1 flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-amber-700" />
+                          Rental Duration (Hours) *
+                        </label>
+                        <input
+                          id="input-rental-hours-booking"
+                          type="number"
+                          min="1"
+                          max="168"
+                          required
+                          value={rentalHours}
+                          onChange={(e) => setRentalHours(Math.max(1, Number(e.target.value)))}
+                          className="w-full px-3 py-2 border border-zinc-300 text-xs font-mono font-bold focus:outline-none focus:border-zinc-900 bg-white text-zinc-950"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-zinc-900 uppercase tracking-widest mb-1">
+                          Hourly Rate (₱ / hr) *
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-xs font-mono font-bold text-zinc-400">₱</span>
+                          <input
+                            id="input-custom-hourly-rate"
+                            type="number"
+                            min="0"
+                            required
+                            value={customHourlyRate}
+                            onChange={(e) => setCustomHourlyRate(Number(e.target.value))}
+                            className="w-full pl-7 pr-3 py-2 border border-zinc-300 text-xs font-mono font-bold focus:outline-none focus:border-zinc-900 bg-white text-zinc-950"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick choose hours */}
+                    <div>
+                      <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                        Quick Choose Hours
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[2, 4, 6, 8, 12, 24, 48].map((hrs) => (
+                          <button
+                            key={hrs}
+                            type="button"
+                            onClick={() => setRentalHours(hrs)}
+                            className={`px-2.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition-all ${
+                              rentalHours === hrs
+                                ? 'bg-zinc-900 text-white border-zinc-900'
+                                : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                            }`}
+                          >
+                            {hrs}h
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Schedule Summary & Conflict Check */}
+                {(() => {
+                  const schedule = getScheduleDetails(
+                    durationMode,
+                    eventDate,
+                    endDate,
+                    startTimeHour,
+                    startTimeMinute,
+                    startAmPm,
+                    endTimeHour,
+                    endTimeMinute,
+                    endAmPm,
+                    rentalDays,
+                    rentalHours
+                  );
+                  const ongoingCollision = getOngoingBookingForVenue(selectedHall, schedule.startDateOnly, schedule.endDateOnly);
+
+                  return (
+                    <div className="space-y-3">
+                      {ongoingCollision && (
+                        <div className="p-3.5 bg-red-50 border border-red-300 text-red-900 text-xs font-semibold space-y-1">
+                          <div className="font-bold flex items-center text-red-700 uppercase tracking-wider">
+                            <AlertCircle className="h-4 w-4 mr-1.5 shrink-0" />
+                            VENUE OCCUPIED DURING SELECTED PERIOD ({schedule.startDateOnly} TO {schedule.endDateOnly})
+                          </div>
+                          <p className="text-[11px] text-red-800">
+                            This venue already has an ONGOING booking (<span className="font-mono font-bold text-red-950">{ongoingCollision.transmittalNo}</span> for <span className="font-bold">{ongoingCollision.rentee}</span>) overlapping with these dates.
+                          </p>
+                          <div className="text-[10px] text-red-700 font-mono">
+                            Existing Booking: {ongoingCollision.dateCheckout} ➔ {ongoingCollision.dateCheckin}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Live Calculated Schedule Summary Box */}
-                      <div className="bg-amber-50/70 p-3.5 border border-amber-300 text-xs font-mono space-y-1">
-                        <div className="text-[10px] font-bold text-amber-900 uppercase tracking-widest flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-amber-700" />
-                          Hourly Schedule Summary (Exact AM / PM):
+                      <div className="bg-amber-50/80 p-3.5 border border-amber-300 text-xs font-mono space-y-1.5">
+                        <div className="text-[10px] font-bold text-amber-900 uppercase tracking-widest flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5 text-amber-700" />
+                            {durationMode === 'Days' ? 'Multi-Day Rental Schedule Summary:' : 'Hourly Rental Schedule Summary:'}
+                          </span>
+                          <span className="bg-amber-200/80 text-amber-950 px-2 py-0.5 font-sans font-extrabold uppercase text-[9px] border border-amber-300">
+                            {durationMode === 'Days' ? `${rentalDays} Day(s) (${rentalDays * 24} Hours)` : `${rentalHours} Hours`}
+                          </span>
                         </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-zinc-900 font-bold">
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-zinc-900 font-bold border-t border-amber-200/70 pt-1.5">
                           <div>
-                            <span className="text-zinc-500 font-normal">Start:</span> {eventDate} @ <span className="text-amber-950 bg-amber-200/70 px-1 py-0.5">{schedule.startTimeDisplay}</span>
+                            <span className="text-zinc-500 font-normal">Start:</span> {schedule.startDateOnly} @ <span className="text-amber-950 bg-amber-200/70 px-1 py-0.5">{schedule.startTimeDisplay}</span>
                           </div>
                           <span className="text-zinc-400 hidden sm:inline">➔</span>
                           <div>
                             <span className="text-zinc-500 font-normal">Check-in End:</span> {schedule.endDateOnly} @ <span className="text-amber-950 bg-amber-200/70 px-1 py-0.5">{schedule.endTimeDisplay}</span>
                           </div>
-                          <div className="text-emerald-700 font-extrabold text-[11px]">
-                            ({rentalHours} Hours)
-                          </div>
+                        </div>
+
+                        <div className="text-[11px] text-emerald-800 font-bold pt-0.5">
+                          Venue Subtotal: ₱{calculateHallTotal().toLocaleString()} 
+                          {durationMode === 'Days' ? ` (₱${customDailyRate.toLocaleString()}/day × ${rentalDays} Day${rentalDays > 1 ? 's' : ''})` : ` (₱${customHourlyRate.toLocaleString()}/hr × ${rentalHours} hr${rentalHours > 1 ? 's' : ''})`}
                         </div>
                       </div>
                     </div>
@@ -1031,12 +1651,12 @@ export default function RentalHalls({
                 })()}
 
                 {/* Optional Extras / Corkage Fees Selection */}
-                <div className="border border-zinc-200 p-4 bg-zinc-50/50 space-y-3">
+                <div className="border border-zinc-200 p-3 bg-zinc-50/50 space-y-2">
                   <span className="text-xs font-bold text-zinc-800 uppercase tracking-wider block">
                     Add Extra Equipment & Corkage Fees (Optional)
                   </span>
 
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                     {hourlyItems.map(item => {
                       const selected = extraItems.find(ei => ei.itemId === item.id);
                       const isHourly = item.isHourlyCharged;
@@ -1050,7 +1670,7 @@ export default function RentalHalls({
                           <div className="min-w-0 flex-1 pr-2">
                             <span className="font-bold text-zinc-900 block truncate">{item.name}</span>
                             <span className="text-[10px] text-zinc-500 font-mono">
-                              ₱{rate.toLocaleString()} {isHourly ? '/ hour' : '/ flat fee'}
+                              ₱{rate.toLocaleString()} {isHourly ? (durationMode === 'Days' ? '/ day charge' : '/ hour') : 'flat fee'}
                             </span>
                           </div>
 
@@ -1095,27 +1715,53 @@ export default function RentalHalls({
                   </div>
                 </div>
 
+                {/* Additional Notes */}
+                <div>
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                    Booking Notes & Setup Remarks
+                  </label>
+                  <input
+                    id="input-booking-notes"
+                    type="text"
+                    placeholder="e.g. Stage setup required, banquet layout"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-zinc-200 text-xs font-semibold focus:outline-none focus:border-zinc-900 bg-zinc-50 focus:bg-white text-zinc-850"
+                  />
+                </div>
+
                 {/* Calculation Breakdown */}
                 <div className="bg-zinc-950 text-white p-4 space-y-2 border border-zinc-800">
                   <div className="flex justify-between text-xs text-zinc-300 font-semibold">
-                    <span>Hall Base Rate:</span>
-                    <span className="font-mono">₱{Number(selectedHall.rentalPrice || 0).toLocaleString()} × {rentalHours} hrs</span>
+                    <span>Selected Duration:</span>
+                    <span className="font-mono font-bold text-amber-400">
+                      {durationMode === 'Days' ? `${rentalDays} Day(s) (${rentalDays * 24} Hours)` : `${rentalHours} Hours`}
+                    </span>
                   </div>
 
                   <div className="flex justify-between text-xs text-zinc-300 font-semibold">
-                    <span>Hall Subtotal:</span>
-                    <span className="font-mono">₱{calculateHallTotal().toLocaleString()}</span>
+                    <span>Venue Base Rate:</span>
+                    <span className="font-mono">
+                      {durationMode === 'Days'
+                        ? `₱${customDailyRate.toLocaleString()} / day × ${rentalDays} day(s)`
+                        : `₱${customHourlyRate.toLocaleString()} / hr × ${rentalHours} hr(s)`}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-xs text-zinc-300 font-semibold">
+                    <span>Venue Rental Subtotal:</span>
+                    <span className="font-mono font-bold text-white">₱{calculateHallTotal().toLocaleString()}</span>
                   </div>
 
                   {extraItems.length > 0 && (
                     <div className="flex justify-between text-xs text-zinc-300 font-semibold border-t border-zinc-800 pt-1.5">
                       <span>Extra Equipment / Corkages:</span>
-                      <span className="font-mono">₱{calculateExtrasTotal().toLocaleString()}</span>
+                      <span className="font-mono text-amber-300">₱{calculateExtrasTotal().toLocaleString()}</span>
                     </div>
                   )}
 
                   <div className="flex justify-between items-center text-sm font-black uppercase tracking-wider text-emerald-400 border-t border-zinc-800 pt-2">
-                    <span>Grand Total Revenue:</span>
+                    <span>Grand Total Estimated Revenue:</span>
                     <span className="font-mono text-base text-emerald-300">₱{calculateGrandTotal().toLocaleString()}</span>
                   </div>
                 </div>
@@ -1131,15 +1777,10 @@ export default function RentalHalls({
                   <button
                     id="btn-confirm-hall-booking"
                     type="submit"
-                    disabled={isSubmitting || !!getOngoingBookingForVenue(selectedHall, eventDate)}
+                    disabled={isSubmitting}
                     className="px-5 py-2 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 cursor-pointer flex items-center shadow-md"
                   >
-                    {isSubmitting 
-                      ? 'Processing...' 
-                      : getOngoingBookingForVenue(selectedHall, eventDate)
-                        ? 'Venue Occupied on Selected Date'
-                        : 'Confirm Hall Rental & Issue Transmittal'
-                    }
+                    {isSubmitting ? 'Processing...' : 'Confirm Venue Booking & Issue Transmittal'}
                   </button>
                 </div>
               </form>
@@ -1164,7 +1805,7 @@ export default function RentalHalls({
                 </h2>
                 <button
                   onClick={() => setIsAddModalOpen(false)}
-                  className="text-zinc-400 hover:text-zinc-900"
+                  className="text-zinc-400 hover:text-zinc-900 cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -1186,7 +1827,7 @@ export default function RentalHalls({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
                       SKU Code
@@ -1197,6 +1838,21 @@ export default function RentalHalls({
                       value={newHallData.sku}
                       onChange={(e) => setNewHallData({ ...newHallData, sku: e.target.value })}
                       className="w-full px-3 py-2 border border-zinc-200 text-xs font-mono bg-zinc-50 text-zinc-850"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-800 uppercase tracking-widest mb-1">
+                      Daily Rate (₱ / day) *
+                    </label>
+                    <input
+                      id="input-venue-daily-rate"
+                      type="number"
+                      required
+                      min="0"
+                      value={newHallData.dailyRentalPrice}
+                      onChange={(e) => setNewHallData({ ...newHallData, dailyRentalPrice: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-zinc-300 font-mono font-bold text-xs bg-zinc-50 text-zinc-950"
                     />
                   </div>
 
@@ -1234,7 +1890,7 @@ export default function RentalHalls({
                   <button
                     type="button"
                     onClick={() => setIsAddModalOpen(false)}
-                    className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-zinc-600 border border-zinc-200"
+                    className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-zinc-600 border border-zinc-200 cursor-pointer"
                   >
                     Cancel
                   </button>

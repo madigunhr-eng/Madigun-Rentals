@@ -43,9 +43,12 @@ export default function Dashboard({
   currentUser,
   onOpenCloudSync
 }: DashboardProps) {
-  // Compute Stats
-  const totalItemsCount = inventory.reduce((acc, item) => acc + item.quantityTotal, 0);
-  const availableItemsCount = inventory.reduce((acc, item) => acc + item.quantityAvailable, 0);
+  // Compute Stats on active assets
+  const activeInventory = inventory.filter(item => item.status !== 'Retired' && item.status !== 'Decommissioned');
+  const decommissionedItems = inventory.filter(item => item.status === 'Retired' || item.status === 'Decommissioned');
+
+  const totalItemsCount = activeInventory.reduce((acc, item) => acc + item.quantityTotal, 0);
+  const availableItemsCount = activeInventory.reduce((acc, item) => acc + item.quantityAvailable, 0);
   const checkedOutCount = totalItemsCount - availableItemsCount;
   
   const activeTransmittals = transmittals.filter(t => t.status !== 'Returned');
@@ -58,7 +61,7 @@ export default function Dashboard({
   });
 
   // Low stock items (alert if available < 5 or less than 20% of total stock remains)
-  const lowStockItems = inventory.filter(item => {
+  const lowStockItems = activeInventory.filter(item => {
     const isLow = item.quantityAvailable < 5 || (item.quantityAvailable / item.quantityTotal) <= 0.20;
     return isLow && item.quantityTotal > 0;
   });

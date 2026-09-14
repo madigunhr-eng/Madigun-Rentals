@@ -11,7 +11,7 @@
         "quantityAvailable": { "type": "integer", "description": "Quantity currently available for renting" },
         "warehouseId": { "type": "string", "description": "Reference ID to the assigned Warehouse" },
         "description": { "type": "string", "description": "Item description or physical details" },
-        "status": { "type": "string", "enum": ["In Stock", "Partially Rented", "Out of Stock", "In Use", "Under Maintenance", "Retired"] },
+        "status": { "type": "string", "enum": ["In Stock", "Partially Rented", "Out of Stock", "In Use", "Under Maintenance", "Retired", "Decommissioned"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "isStationary": { "type": "boolean", "description": "Whether the asset is a stationary room asset" },
         "isCompanyProperty": { "type": "boolean", "description": "Whether the asset is a corporate company property" },
@@ -19,7 +19,13 @@
         "serialNumber": { "type": "string", "description": "Machinery/generator serial number" },
         "lastMaintenanceDate": { "type": "string", "description": "Last maintenance log timestamp" },
         "nextMaintenanceDate": { "type": "string", "description": "Scheduled next maintenance timestamp" },
-        "assetCondition": { "type": "string", "enum": ["Excellent", "Good", "Fair", "Poor", "Under Repair"] }
+        "assetCondition": { "type": "string", "enum": ["Excellent", "Good", "Fair", "Poor", "Under Repair"] },
+        "decommissionReason": { "type": "string", "description": "Reason why the asset was decommissioned, such as damaged beyond repair or too old" },
+        "decommissionNotes": { "type": "string", "description": "Detailed notes regarding damage or retirement assessment" },
+        "decommissionedAt": { "type": "string", "format": "date-time" },
+        "decommissionedBy": { "type": "string", "description": "Name of staff/admin who authorized decommissioning" },
+        "decommissionSeverity": { "type": "string", "description": "Severity assessment (Total Loss, Aging, Salvageable)" },
+        "decommissionDisposalMethod": { "type": "string", "description": "Storage or disposal method (Salvage depot, recycle, scrap)" }
       },
       "required": ["name", "sku", "quantityTotal", "quantityAvailable", "status", "createdAt"]
     },

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, MapPin, Edit, PlusCircle, MinusCircle, CheckCircle, Info, X, Save, Trash2, Send, Tag, AlertTriangle } from 'lucide-react';
+import { Search, Plus, MapPin, Edit, PlusCircle, MinusCircle, CheckCircle, Info, X, Save, Trash2, Send, Tag, AlertTriangle, Archive } from 'lucide-react';
 import { localStore } from '../localStore';
 import { InventoryItem, UserSession, Warehouse, ItemCategory } from '../types';
 import { CATEGORIES, DEFAULT_CATEGORIES } from '../utils';
+import DecommissionModal, { DecommissionPayload } from './DecommissionModal';
 
 interface InventoryListProps {
   items: InventoryItem[];
@@ -12,9 +13,10 @@ interface InventoryListProps {
   onDeleteItem: (id: string) => Promise<void>;
   currentUser?: UserSession | null;
   onNewTransmittalClick?: () => void;
+  onNavigateToDecommissioned?: () => void;
 }
 
-export default function InventoryList({ items, onAddItem, onUpdateItem, onDeleteItem, currentUser, onNewTransmittalClick }: InventoryListProps) {
+export default function InventoryList({ items, onAddItem, onUpdateItem, onDeleteItem, currentUser, onNewTransmittalClick, onNavigateToDecommissioned }: InventoryListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
@@ -77,7 +79,7 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
     return items.filter(i => {
       const isNotHall = i.category !== 'Rental Halls & Event Venues' && !i.sku?.toLowerCase().startsWith('hall-');
       const matches = catName === 'Corkage & Service Permits' ? (i.isNoQuantity || i.category === 'Corkage & Service Permits') : i.category === catName;
-      return i.status !== 'Retired' && isNotHall && matches;
+      return i.status !== 'Retired' && i.status !== 'Decommissioned' && isNotHall && matches;
     }).length;
   };
 
@@ -218,9 +220,84 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Decommission Asset state
+  const [itemToDecommission, setItemToDecommission] = useState<InventoryItem | null>(null);
+  const [isDecommissionModalOpen, setIsDecommissionModalOpen] = useState(false);
+
+  const decommissionedCount = items.filter(i => i.status === 'Retired' || i.status === 'Decommissioned').length;
+
+  const handleOpenDecommission = (item: InventoryItem) => {
+    setItemToDecommission(item);
+    setIsDecommissionModalOpen(true);
+  };
+
+  const handleConfirmDecommission = async (payload: DecommissionPayload) => {
+    const originalItem = items.find(i => i.id === payload.itemId);
+    if (!originalItem) return;
+
+    if (!payload.isPartial || payload.decommissionQty >= originalItem.quantityTotal) {
+      await onUpdateItem(originalItem.id, {
+        status: 'Decommissioned',
+        quantityAvailable: 0,
+        decommissionReason: payload.reason,
+        decommissionSeverity: payload.severity,
+        decommissionDisposalMethod: payload.disposalMethod,
+        decommissionNotes: payload.notes,
+        decommissionedBy: payload.decommissionedBy,
+        decommissionedAt: payload.decommissionedAt
+      });
+    } else {
+      const newTotal = originalItem.quantityTotal - payload.decommissionQty;
+      const newAvailable = Math.max(0, originalItem.quantityAvailable - payload.decommissionQty);
+      let newStatus: 'In Stock' | 'Partially Rented' | 'Out of Stock' = 'In Stock';
+      if (newAvailable === 0 && newTotal > 0) newStatus = 'Out of Stock';
+      else if (newAvailable < newTotal) newStatus = 'Partially Rented';
+
+      await onUpdateItem(originalItem.id, {
+        quantityTotal: newTotal,
+        quantityAvailable: newAvailable,
+        status: newStatus
+      });
+
+      await onAddItem({
+        name: `${originalItem.name} (Retired Batch)`,
+        sku: `${originalItem.sku}-DEC-${Date.now().toString().slice(-4)}`,
+        category: originalItem.category,
+        quantityTotal: payload.decommissionQty,
+        quantityAvailable: 0,
+        status: 'Decommissioned',
+        warehouseId: originalItem.warehouseId,
+        price: originalItem.price,
+        rentalPrice: originalItem.rentalPrice,
+        decommissionReason: payload.reason,
+        decommissionSeverity: payload.severity,
+        decommissionDisposalMethod: payload.disposalMethod,
+        decommissionNotes: payload.notes,
+        decommissionedBy: payload.decommissionedBy,
+        decommissionedAt: payload.decommissionedAt,
+        description: `Decommissioned ${payload.decommissionQty} unit(s) from asset ${originalItem.sku}. Reason: ${payload.reason}. Notes: ${payload.notes}`
+      });
+    }
+
+    try {
+      await localStore.addItem('audit_logs', {
+        id: `audit_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actor: payload.decommissionedBy,
+        action: 'Decommissioned Asset',
+        details: `Decommissioned ${payload.decommissionQty} unit(s) of "${originalItem.name}" (${originalItem.sku}) due to: ${payload.reason}`,
+        type: 'inventory'
+      });
+    } catch (e) {}
+
+    setSelectedItem(null);
+    setSuccessMsg(`Asset "${originalItem.name}" has been decommissioned.`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
   // Handle item search & category filtering
   const filteredItems = items.filter(item => {
-    const isRentable = item.status !== 'Retired';
+    const isRentable = item.status !== 'Retired' && item.status !== 'Decommissioned';
     const isNotHall = item.category !== 'Rental Halls & Event Venues' && !item.sku?.toLowerCase().startsWith('hall-');
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           item.sku.toLowerCase().includes(searchQuery.toLowerCase());
@@ -501,26 +578,45 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
             </span>
           )}
         </div>
-        {currentUser?.role !== 'Front Desk' && (
-          <button
-            id="btn-add-item-list"
-            onClick={handleOpenAddModal}
-            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5 mr-2" />
-            Add Rental Item Profile
-          </button>
-        )}
-        {(currentUser?.role?.toLowerCase() === 'staff' || currentUser?.role?.toLowerCase() === 'front desk') && onNewTransmittalClick && (
-          <button
-            id="btn-create-transmittal-rental-items"
-            onClick={onNewTransmittalClick}
-            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-pointer"
-          >
-            <Send className="h-3.5 w-3.5 mr-2" />
-            New Transmittal
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {onNavigateToDecommissioned && (
+            <button
+              id="btn-nav-to-decommissioned-header"
+              type="button"
+              onClick={onNavigateToDecommissioned}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-3.5 py-2.5 text-xs font-bold uppercase tracking-widest text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-colors cursor-pointer"
+            >
+              <Archive className="h-3.5 w-3.5 mr-1.5 text-amber-700" />
+              <span>Decommissioned Items</span>
+              {decommissionedCount > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-mono bg-amber-200/80 text-amber-950 font-black">
+                  {decommissionedCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {currentUser?.role !== 'Front Desk' && (
+            <button
+              id="btn-add-item-list"
+              onClick={handleOpenAddModal}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5 mr-2" />
+              Add Rental Item Profile
+            </button>
+          )}
+          {(currentUser?.role?.toLowerCase() === 'staff' || currentUser?.role?.toLowerCase() === 'front desk') && onNewTransmittalClick && (
+            <button
+              id="btn-create-transmittal-rental-items"
+              onClick={onNewTransmittalClick}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-pointer"
+            >
+              <Send className="h-3.5 w-3.5 mr-2" />
+              New Transmittal
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
@@ -673,24 +769,38 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
                         {item.category}
                       </span>
                       {currentUser?.role !== 'Front Desk' && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedItem(item);
-                            setIsEditMode(false);
-                            const rentedQty = item.quantityTotal - item.quantityAvailable;
-                            if (rentedQty > 0) {
-                              setErrorMsg(`CANNOT DELETE: ${rentedQty} unit(s) of this asset are currently rented out under active transmittals. Please return them first before deleting.`);
-                            } else {
-                              setShowDeleteConfirm(true);
-                            }
-                          }}
-                          className="p-1 text-zinc-400 hover:text-red-650 hover:bg-red-50 rounded-sm transition-colors cursor-pointer"
-                          title="Delete Asset"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            id={`btn-decommission-card-${item.sku}`}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDecommission(item);
+                            }}
+                            className="p-1 text-zinc-400 hover:text-amber-700 hover:bg-amber-50 rounded-xs transition-colors cursor-pointer"
+                            title="Decommission Asset (Damaged / Obsolete)"
+                          >
+                            <Archive className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedItem(item);
+                              setIsEditMode(false);
+                              const rentedQty = item.quantityTotal - item.quantityAvailable;
+                              if (rentedQty > 0) {
+                                setErrorMsg(`CANNOT DELETE: ${rentedQty} unit(s) of this asset are currently rented out under active transmittals. Please return them first before deleting.`);
+                              } else {
+                                setShowDeleteConfirm(true);
+                              }
+                            }}
+                            className="p-1 text-zinc-400 hover:text-red-650 hover:bg-red-50 rounded-xs transition-colors cursor-pointer"
+                            title="Delete Asset"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1129,13 +1239,26 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
                             Edit Profile
                           </button>
                           <button
+                            id="btn-decommission-slideover-trigger"
+                            onClick={() => {
+                              if (selectedItem) {
+                                handleOpenDecommission(selectedItem);
+                              }
+                            }}
+                            className="py-2.5 px-3 border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 transition-colors text-xs font-bold uppercase tracking-widest flex items-center justify-center cursor-pointer"
+                            title="Decommission Asset due to Damage or Age"
+                          >
+                            <Archive className="h-3.5 w-3.5 mr-1 text-amber-700" />
+                            Decommission
+                          </button>
+                          <button
                             id="btn-delete-item-trigger"
                             onClick={handleDeleteAsset}
-                            className="py-2.5 px-4 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors text-xs font-bold uppercase tracking-widest flex items-center justify-center cursor-pointer"
+                            className="py-2.5 px-3 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors text-xs font-bold uppercase tracking-widest flex items-center justify-center cursor-pointer"
                             title="Delete Asset Completely"
                           >
-                            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                            Delete Asset
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Delete
                           </button>
                         </div>
                       )
@@ -1575,6 +1698,19 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
           </div>
         )}
       </AnimatePresence>
+
+      {/* Decommission Asset Modal */}
+      <DecommissionModal
+        item={itemToDecommission}
+        isOpen={isDecommissionModalOpen}
+        onClose={() => {
+          setIsDecommissionModalOpen(false);
+          setItemToDecommission(null);
+        }}
+        onConfirm={handleConfirmDecommission}
+        currentUser={currentUser}
+        warehouses={warehouses}
+      />
     </div>
   );
 }

@@ -361,3 +361,206 @@ export async function generateSystemWhitePaperPDF() {
 
   doc.save('madigun_logistics_system_white_paper.pdf');
 }
+
+/**
+ * Generates an official printable PDF Certificate / Decommission Incident Slip for an asset.
+ */
+export async function generateDecommissionSlipPDF(
+  item: {
+    name: string;
+    sku: string;
+    category: string;
+    quantityTotal: number;
+    price?: number;
+    serialNumber?: string;
+    plateNumber?: string;
+    decommissionReason?: string;
+    decommissionNotes?: string;
+    decommissionedAt?: string;
+    decommissionedBy?: string;
+    decommissionSeverity?: string;
+    decommissionDisposalMethod?: string;
+    warehouseName?: string;
+  }
+) {
+  const doc = new jsPDF();
+  const logoBase64 = await getSystemLogoBase64();
+
+  // Top header line
+  doc.setFillColor(24, 24, 27);
+  doc.rect(15, 10, 180, 2, 'F');
+
+  if (logoBase64) {
+    try {
+      doc.addImage(logoBase64, 'PNG', 15, 14, 14, 14);
+    } catch (e) {
+      console.warn("Could not draw logo:", e);
+    }
+  }
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(24, 24, 27);
+  doc.text('MADIGUN HOTEL & EVENTS', logoBase64 ? 32 : 15, 20);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(113, 113, 122);
+  doc.text('PROPERTY, INVENTORY & LOGISTICS MANAGEMENT DIVISION', logoBase64 ? 32 : 15, 25);
+  doc.text('OFFICIAL ASSET DECOMMISSION & WRITE-OFF CERTIFICATE', logoBase64 ? 32 : 15, 29);
+
+  // Document Title Bar
+  doc.setFillColor(244, 244, 245);
+  doc.rect(15, 34, 180, 10, 'F');
+  doc.setDrawColor(228, 228, 231);
+  doc.rect(15, 34, 180, 10, 'S');
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(185, 28, 28);
+  doc.text('STATUS: ASSET DECOMMISSIONED & RETIRED FROM SERVICE', 20, 40.5);
+
+  let y = 52;
+
+  // Section 1: Asset Information
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(24, 24, 27);
+  doc.text('1. ASSET SPECIFICATIONS & IDENTIFICATION', 15, y);
+  y += 5;
+
+  const drawRow = (label: string, value: string, currentY: number) => {
+    doc.setFillColor(250, 250, 250);
+    doc.rect(15, currentY - 3.5, 60, 7, 'F');
+    doc.setDrawColor(228, 228, 231);
+    doc.rect(15, currentY - 3.5, 60, 7, 'S');
+    doc.rect(75, currentY - 3.5, 120, 7, 'S');
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(113, 113, 122);
+    doc.text(label.toUpperCase(), 18, currentY + 1);
+
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(24, 24, 27);
+    doc.text(value || 'N/A', 78, currentY + 1);
+  };
+
+  drawRow('Asset Display Name', item.name, y);
+  y += 7;
+  drawRow('Asset SKU / Serial Code', item.sku, y);
+  y += 7;
+  drawRow('Classification Category', item.category, y);
+  y += 7;
+  drawRow('Decommissioned Units', `${item.quantityTotal} unit(s)`, y);
+  y += 7;
+  if (item.serialNumber) {
+    drawRow('Manufacturer Serial No.', item.serialNumber, y);
+    y += 7;
+  }
+  if (item.plateNumber) {
+    drawRow('Vehicle Plate Number', item.plateNumber, y);
+    y += 7;
+  }
+  drawRow('Last Known Warehouse', item.warehouseName || 'Unassigned / Floor Stock', y);
+  y += 7;
+  drawRow('Recorded Asset Value', item.price ? `PHP ${Number(item.price).toLocaleString()}` : 'PHP 0.00', y);
+  y += 12;
+
+  // Section 2: Decommission Assessment
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(24, 24, 27);
+  doc.text('2. DECOMMISSION & FAILURE ASSESSMENT', 15, y);
+  y += 5;
+
+  drawRow('Primary Decommission Reason', item.decommissionReason || 'Damaged Beyond Repair', y);
+  y += 7;
+  drawRow('Damage Severity / Condition', item.decommissionSeverity || 'Total Loss / Scrap', y);
+  y += 7;
+  drawRow('Disposal / Storage Plan', item.decommissionDisposalMethod || 'Salvage Depot / Storage', y);
+  y += 7;
+  drawRow('Inspecting Staff / Officer', item.decommissionedBy || 'Property Inspector', y);
+  y += 7;
+
+  const decommDate = item.decommissionedAt 
+    ? new Date(item.decommissionedAt).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: '2-digit', year: 'numeric' });
+  drawRow('Date Decommissioned', `${decommDate} (GMT+8)`, y);
+  y += 12;
+
+  // Section 3: Assessment Notes
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(24, 24, 27);
+  doc.text('3. DETAILED INSPECTION REMARKS & INCIDENT NOTES', 15, y);
+  y += 6;
+
+  doc.setFillColor(253, 253, 254);
+  doc.rect(15, y - 2, 180, 24, 'F');
+  doc.setDrawColor(228, 228, 231);
+  doc.rect(15, y - 2, 180, 24, 'S');
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(63, 63, 70);
+  const noteLines = doc.splitTextToSize(item.decommissionNotes || 'Asset retired from circulation due to damage or obsolescence. Equipment no longer meets operational safety or rental quality requirements.', 172);
+  let noteY = y + 3;
+  noteLines.slice(0, 4).forEach((line: string) => {
+    doc.text(line, 19, noteY);
+    noteY += 4.5;
+  });
+
+  y += 32;
+
+  // Section 4: Formal Authorization Signatures
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(24, 24, 27);
+  doc.text('4. VERIFICATION & ADMINISTRATIVE SIGN-OFF', 15, y);
+  y += 14;
+
+  const colWidth = 55;
+  // Box 1: Inspecting Custodian
+  doc.line(15, y, 15 + colWidth, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(24, 24, 27);
+  doc.text(item.decommissionedBy || 'Inspecting Officer', 15, y + 4);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(113, 113, 122);
+  doc.text('Inspecting Custodian / Evaluator', 15, y + 8);
+
+  // Box 2: Warehouse Supervisor
+  doc.line(77, y, 77 + colWidth, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(24, 24, 27);
+  doc.text('Warehouse Supervisor', 77, y + 4);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(113, 113, 122);
+  doc.text('Asset Custody & Logistics Lead', 77, y + 8);
+
+  // Box 3: Managing Director / Admin
+  doc.line(140, y, 140 + colWidth, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(24, 24, 27);
+  doc.text('Managing Director / Admin', 140, y + 4);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(113, 113, 122);
+  doc.text('Executive Authorization & Approval', 140, y + 8);
+
+  // Footer
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(161, 161, 170);
+  doc.text('Madigun Hotel & Events • Decommission & Salvage Audit Slip • Generated via Madigun Logistics Core', 15, 285);
+  doc.text(`Doc ID: DEC-${item.sku}-${Date.now().toString().slice(-4)}`, 195, 285, { align: 'right' });
+
+  doc.save(`Decommission_Certificate_${item.sku}.pdf`);
+}

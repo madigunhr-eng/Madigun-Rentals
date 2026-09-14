@@ -101,8 +101,11 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
       return setErrorMsg(`Please enter a quantity of 1 or more for "${item?.name || 'item'}"`);
     }
 
-    // Check if any selected item is an event venue and is already booked on the selected date
+    // Check if any selected item is an event venue and is already booked on the selected date range
     const allTransmittals = localStore.getCollection<any>('transmittals');
+    const reqStart = dateCheckout ? dateCheckout.split(' ')[0].split('T')[0] : '';
+    const reqEnd = dateCheckin ? dateCheckin.split(' ')[0].split('T')[0] : reqStart;
+
     for (const si of selectedItems) {
       const itm = inventory.find(i => i.id === si.itemId);
       if (itm && (itm.category === 'Rental Halls & Event Venues' || itm.isHourlyCharged)) {
@@ -111,15 +114,14 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
           const matches = t.items.some((ti: any) => ti.itemId === itm.id || ti.sku === itm.sku);
           if (!matches) return false;
           const txStart = t.dateCheckout ? t.dateCheckout.split(' ')[0].split('T')[0] : '';
-          const txEnd = t.dateCheckin ? t.dateCheckin.split(' ')[0].split('T')[0] : '';
-          if (txEnd) {
-            return dateCheckout >= txStart && dateCheckout <= txEnd;
-          }
-          return dateCheckout === txStart;
+          const txEnd = t.dateCheckin ? t.dateCheckin.split(' ')[0].split('T')[0] : txStart;
+          if (!txStart || !reqStart) return true;
+          // Date interval overlap condition: [reqStart, reqEnd] overlaps with [txStart, txEnd]
+          return reqStart <= txEnd && reqEnd >= txStart;
         });
 
         if (ongoingConflict) {
-          return setErrorMsg(`Venue "${itm.name}" already has an ongoing booking (${ongoingConflict.transmittalNo} for ${ongoingConflict.rentee}) for ${dateCheckout}. Please select another date or venue.`);
+          return setErrorMsg(`Venue "${itm.name}" already has an ongoing booking (${ongoingConflict.transmittalNo} for ${ongoingConflict.rentee}) during ${dateCheckout} to ${dateCheckin}. Please select another date or venue.`);
         }
       }
     }

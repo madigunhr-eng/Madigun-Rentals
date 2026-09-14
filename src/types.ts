@@ -5,7 +5,7 @@ export interface InventoryItem {
   category: string;
   quantityTotal: number;
   quantityAvailable: number;
-  status: 'In Stock' | 'Partially Rented' | 'Out of Stock' | 'In Use' | 'Under Maintenance' | 'Retired';
+  status: 'In Stock' | 'Partially Rented' | 'Out of Stock' | 'In Use' | 'Under Maintenance' | 'Retired' | 'Decommissioned';
   location?: string;
   description?: string;
   createdAt: any;
@@ -16,6 +16,7 @@ export interface InventoryItem {
   gridLocation?: string;
   price?: number;
   rentalPrice?: number;
+  dailyRentalPrice?: number;
   isHourlyCharged?: boolean;
   estimatedLifespan?: string;
   warehouseId?: string;
@@ -26,6 +27,14 @@ export interface InventoryItem {
   assetCondition?: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Under Repair';
   isNoQuantity?: boolean;
   chargeType?: 'Daily' | 'Hourly' | 'Flat Fee';
+  decommissionReason?: 'Damaged Beyond Repair' | 'Too Old / Obsolete' | 'Normal Wear & Tear' | 'Failed Safety Inspection' | 'Lost / Missing' | 'Other' | string;
+  decommissionNotes?: string;
+  decommissionedAt?: string;
+  decommissionedBy?: string;
+  decommissionSeverity?: 'Total Loss / Scrap' | 'Damaged / Uneconomical' | 'Aging / Obsolete' | 'Salvageable for Parts' | string;
+  decommissionDisposalMethod?: 'Salvage Depot / Storage' | 'Scrapped / Recycled' | 'E-Waste Recycling' | 'Pending Disposal' | 'Donated / Sold as Scrap' | string;
+  decommissionRestoredAt?: string;
+  decommissionRestoredBy?: string;
 }
 
 export interface Warehouse {
