@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { getItemValuationAndUnits } from '../utils';
 
 /**
  * Retrieves the current system logo as a base64 PNG data URL.
@@ -563,4 +564,267 @@ export async function generateDecommissionSlipPDF(
   doc.text(`Doc ID: DEC-${item.sku}-${Date.now().toString().slice(-4)}`, 195, 285, { align: 'right' });
 
   doc.save(`Decommission_Certificate_${item.sku}.pdf`);
+}
+
+/**
+ * Generates an official, clean Inventory & Valuation Report PDF
+ * displaying exclusively the list of owned rental items and their total value (no extraneous analysis).
+ * For vehicles: total units is locked to 1 (car rental) and total valuation equals unit replacement value.
+ */
+export async function generateOwnedPropertiesSummaryPDF(
+  items: Array<{
+    id: string;
+    name: string;
+    sku: string;
+    category: string;
+    quantityTotal: number;
+    quantityAvailable: number;
+    price?: number;
+    rentalPrice?: number;
+    status: string;
+    isNoQuantity?: boolean;
+    warehouseId?: string;
+    assetCondition?: string;
+    plateNumber?: string;
+  }>,
+  warehouses: Array<{ id: string; name: string }>,
+  generatedBy: string = 'Property Custodian'
+) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const logoBase64 = await getSystemLogoBase64();
+  const primaryColor = [24, 24, 27]; // zinc-900
+  const secondaryColor = [113, 113, 122]; // zinc-500
+
+  // Filter active rental properties (exclude retired/decommissioned and halls)
+  const activeProperties = items.filter(
+    i => i.status !== 'Retired' &&
+         i.status !== 'Decommissioned' &&
+         i.category !== 'Rental Halls & Event Venues' &&
+         !i.sku?.toLowerCase().startsWith('hall-')
+  );
+
+  // Normalize each item according to business rules:
+  // Vehicles: units = 1 (car rental, not unlimited), total valuation = unit replace value
+  const itemRecords = activeProperties.map(item => {
+    const stats = getItemValuationAndUnits(item);
+    return {
+      ...item,
+      isVehicle: stats.isVehicle,
+      totalUnits: stats.totalUnits,
+      unitPrice: stats.unitPrice,
+      totalValuation: stats.totalValuation
+    };
+  });
+
+  const grandTotalItems = itemRecords.length;
+  const grandTotalUnits = itemRecords.reduce((sum, i) => sum + i.totalUnits, 0);
+  const grandTotalValuation = itemRecords.reduce((sum, i) => sum + i.totalValuation, 0);
+
+  let pageNum = 1;
+  drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+
+  let y = 33;
+
+  // Document Title Banner
+  doc.setFillColor(244, 244, 245);
+  doc.rect(15, y, 180, 11, 'F');
+  doc.setDrawColor(212, 212, 216);
+  doc.rect(15, y, 180, 11, 'S');
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(24, 24, 27);
+  doc.text('OWNED RENTAL PROPERTIES & VALUATION REGISTER', 19, y + 7);
+
+  y += 15;
+
+  // Document Scope & Metadata Bar
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(113, 113, 122);
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  doc.text(`Generated: ${dateStr} • Registered Profiles: ${grandTotalItems} • Total Units: ${grandTotalUnits.toLocaleString()}`, 15, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(24, 24, 27);
+  doc.text(`Grand Total Valuation: PHP ${grandTotalValuation.toLocaleString()}`, 195, y, { align: 'right' });
+
+  y += 5;
+
+  // Table Header
+  const drawItemsTableHeader = (currentY: number) => {
+    doc.setFillColor(39, 39, 42); // zinc-800
+    doc.rect(15, currentY, 180, 7, 'F');
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text('#', 17, currentY + 4.8);
+    doc.text('SKU', 24, currentY + 4.8);
+    doc.text('ITEM NAME & SPECIFICATIONS', 50, currentY + 4.8);
+    doc.text('CATEGORY', 105, currentY + 4.8);
+    doc.text('UNITS', 142, currentY + 4.8, { align: 'right' });
+    doc.text('UNIT VALUE', 167, currentY + 4.8, { align: 'right' });
+    doc.text('TOTAL VALUE', 193, currentY + 4.8, { align: 'right' });
+  };
+
+  drawItemsTableHeader(y);
+  y += 7;
+
+  // Render Item Rows
+  itemRecords.forEach((item, idx) => {
+    // Check if new page needed
+    if (y > 265) {
+      doc.addPage();
+      pageNum++;
+      drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+      y = 33;
+      drawItemsTableHeader(y);
+      y += 7;
+    }
+
+    if (idx % 2 === 1) {
+      doc.setFillColor(250, 250, 250);
+      doc.rect(15, y, 180, 5.8, 'F');
+    }
+
+    // Row Number
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(113, 113, 122);
+    doc.text((idx + 1).toString(), 17, y + 4);
+
+    // SKU
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(24, 24, 27);
+    doc.text(doc.splitTextToSize(item.sku || '-', 23)[0], 24, y + 4);
+
+    // Item Name (+ Plate Number if vehicle)
+    let displayName = item.name;
+    if (item.isVehicle && item.plateNumber) {
+      displayName += ` [Plate: ${item.plateNumber}]`;
+    }
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(24, 24, 27);
+    doc.text(doc.splitTextToSize(displayName, 53)[0], 50, y + 4);
+
+    // Category
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(82, 82, 91);
+    doc.text(doc.splitTextToSize(item.category || 'Rental', 35)[0], 105, y + 4);
+
+    // Units (1 for vehicle, count for others)
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(24, 24, 27);
+    doc.text(item.totalUnits.toString(), 142, y + 4, { align: 'right' });
+
+    // Unit Value (PHP)
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(82, 82, 91);
+    doc.text(`PHP ${item.unitPrice.toLocaleString()}`, 167, y + 4, { align: 'right' });
+
+    // Total Value (PHP) - for vehicle, strictly matches Unit Value
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(24, 24, 27);
+    doc.text(`PHP ${item.totalValuation.toLocaleString()}`, 193, y + 4, { align: 'right' });
+
+    // Divider line
+    doc.setDrawColor(244, 244, 245);
+    doc.line(15, y + 5.8, 195, y + 5.8);
+    y += 5.8;
+  });
+
+  // Check space for Grand Total Summary row
+  if (y > 255) {
+    doc.addPage();
+    pageNum++;
+    drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+    y = 33;
+  }
+
+  // Grand Total Summary Row
+  doc.setFillColor(244, 244, 245);
+  doc.rect(15, y, 180, 7.5, 'F');
+  doc.setDrawColor(161, 161, 170);
+  doc.line(15, y, 195, y);
+  doc.line(15, y + 7.5, 195, y + 7.5);
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(24, 24, 27);
+  doc.text('GRAND TOTAL OWNED PORTFOLIO', 17, y + 5.2);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(113, 113, 122);
+  doc.text(`(${grandTotalItems} items)`, 75, y + 5.2);
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(24, 24, 27);
+  doc.text(grandTotalUnits.toLocaleString(), 142, y + 5.2, { align: 'right' });
+  doc.text(`PHP ${grandTotalValuation.toLocaleString()}`, 193, y + 5.2, { align: 'right' });
+
+  y += 14;
+
+  // Official Sign-Off Block
+  if (y > 240) {
+    doc.addPage();
+    pageNum++;
+    drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+    y = 40;
+  }
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(24, 24, 27);
+  doc.text('OFFICIAL ASSET AUDIT & CUSTODIAN VERIFICATION', 15, y);
+  y += 12;
+
+  const colW = 52;
+  // Col 1: Custodian
+  doc.line(15, y, 15 + colW, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.text(generatedBy || 'Property Custodian', 15, y + 4);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(113, 113, 122);
+  doc.text('Prepared By • Custodian / Inspector', 15, y + 7.5);
+
+  // Col 2: Warehouse Logistics Manager
+  doc.line(78, y, 78 + colW, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(24, 24, 27);
+  doc.text('Warehouse & Assets Supervisor', 78, y + 4);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(113, 113, 122);
+  doc.text('Verified By • Logistics Division', 78, y + 7.5);
+
+  // Col 3: Managing Director
+  doc.line(141, y, 141 + colW, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(24, 24, 27);
+  doc.text('Managing Director / Admin', 141, y + 4);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(113, 113, 122);
+  doc.text('Approved By • Executive Office', 141, y + 7.5);
+
+  // Apply watermark to all pages
+  applyCenterWatermarkToAllPages(doc, logoBase64);
+
+  const dateStamp = new Date().toISOString().split('T')[0];
+  doc.save(`Madigun_Owned_Rental_Properties_Summary_${dateStamp}.pdf`);
 }

@@ -592,11 +592,11 @@ export default function RentalHalls({
             <div className="flex items-center gap-2">
               <TimerReset className="h-5 w-5 text-amber-400" />
               <h2 className="text-sm font-black uppercase tracking-wider text-zinc-100">
-                Active Venue Rentals ({activeVenueBookings.length}) — Extension Management
+                Active Venue Rentals ({activeVenueBookings.length}) — Multi-Day & Hourly Extensions
               </h2>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-900 text-amber-300 px-2.5 py-1 border border-zinc-700">
-              Live Hourly Tracker
+              Live Duration Tracker
             </span>
           </div>
 
@@ -654,7 +654,7 @@ export default function RentalHalls({
                     className="w-full py-2 px-3 text-xs font-bold uppercase tracking-wider text-zinc-950 bg-amber-400 hover:bg-amber-300 border border-amber-300 transition-colors cursor-pointer flex items-center justify-center font-mono shadow-xs"
                   >
                     <Clock className="h-3.5 w-3.5 mr-1.5 shrink-0" />
-                    Extend Rental Hours
+                    Extend Venue Rental (Days / Hours)
                   </button>
                 )}
               </div>

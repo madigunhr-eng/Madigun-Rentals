@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, MapPin, Edit, PlusCircle, MinusCircle, CheckCircle, Info, X, Save, Trash2, Send, Tag, AlertTriangle, Archive } from 'lucide-react';
+import { Search, Plus, MapPin, Edit, PlusCircle, MinusCircle, CheckCircle, Info, X, Save, Trash2, Send, Tag, AlertTriangle, Archive, BarChart3 } from 'lucide-react';
 import { localStore } from '../localStore';
 import { InventoryItem, UserSession, Warehouse, ItemCategory } from '../types';
-import { CATEGORIES, DEFAULT_CATEGORIES } from '../utils';
+import { CATEGORIES, DEFAULT_CATEGORIES, getItemValuationAndUnits, isVehicleItemOrCategory } from '../utils';
 import DecommissionModal, { DecommissionPayload } from './DecommissionModal';
+import OwnedPropertiesSummaryModal from './OwnedPropertiesSummaryModal';
 
 interface InventoryListProps {
   items: InventoryItem[];
@@ -53,6 +54,26 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
   const [categoryActionSuccess, setCategoryActionSuccess] = useState('');
   const [categoryToDelete, setCategoryToDelete] = useState<ItemCategory | null>(null);
   const [isDeletingCategory, setIsDeletingCategory] = useState(false);
+  const [isPropertySummaryOpen, setIsPropertySummaryOpen] = useState(false);
+
+  // Overall owned physical properties summary metrics
+  const overallOwnedMetrics = React.useMemo(() => {
+    const physical = items.filter(i => 
+      i.status !== 'Retired' && 
+      i.status !== 'Decommissioned' && 
+      i.category !== 'Rental Halls & Event Venues' && 
+      !i.sku?.toLowerCase().startsWith('hall-') &&
+      (isVehicleItemOrCategory(i) || (!i.isNoQuantity && i.category !== 'Corkage & Service Permits'))
+    );
+    let totalUnits = 0;
+    let totalValuation = 0;
+    physical.forEach(i => {
+      const stats = getItemValuationAndUnits(i);
+      totalUnits += stats.totalUnits;
+      totalValuation += stats.totalValuation;
+    });
+    return { count: physical.length, totalUnits, totalValuation };
+  }, [items]);
 
   React.useEffect(() => {
     const unsubscribe = localStore.subscribe<ItemCategory>('categories', (list) => {
@@ -579,6 +600,23 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Generate Overall Owned Property Summary Button */}
+          <button
+            id="btn-generate-property-summary"
+            type="button"
+            onClick={() => setIsPropertySummaryOpen(true)}
+            className="w-full sm:w-auto inline-flex items-center justify-center px-3.5 py-2.5 text-xs font-bold uppercase tracking-widest text-zinc-900 bg-white hover:bg-zinc-100 border border-zinc-300 hover:border-zinc-900 transition-colors cursor-pointer shadow-2xs group"
+            title="Generate summary of overall owned properties for rent, total counts, and asset valuation"
+          >
+            <BarChart3 className="h-3.5 w-3.5 mr-1.5 text-amber-600 group-hover:scale-110 transition-transform" />
+            <span>Owned Property Summary</span>
+            {overallOwnedMetrics.totalUnits > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-amber-100 text-amber-900 font-bold border border-amber-200">
+                ₱{overallOwnedMetrics.totalValuation.toLocaleString()}
+              </span>
+            )}
+          </button>
+
           {onNavigateToDecommissioned && (
             <button
               id="btn-nav-to-decommissioned-header"
@@ -1710,6 +1748,16 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
         onConfirm={handleConfirmDecommission}
         currentUser={currentUser}
         warehouses={warehouses}
+      />
+
+      {/* Overall Owned Properties Valuation & Counts Summary Modal */}
+      <OwnedPropertiesSummaryModal
+        isOpen={isPropertySummaryOpen}
+        onClose={() => setIsPropertySummaryOpen(false)}
+        items={items}
+        warehouses={warehouses}
+        categories={categories}
+        currentUser={currentUser}
       />
     </div>
   );
