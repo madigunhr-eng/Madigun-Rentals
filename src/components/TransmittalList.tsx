@@ -523,25 +523,31 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
               z-index: 1;
             }
             .terms-block {
-              font-size: 8px;
-              color: #6B5C51;
-              border-top: 1px solid #E6DFD6;
-              padding-top: 8px;
-              margin-bottom: 15px;
+              font-size: 10px;
+              color: #382E28;
+              border-top: 1.5px solid #D5CBC1;
+              padding-top: 10px;
+              margin-top: 14px;
+              margin-bottom: 18px;
               position: relative;
               z-index: 1;
             }
             .terms-hdr {
               font-weight: 800;
               text-transform: uppercase;
-              margin-bottom: 4px;
+              margin-bottom: 6px;
               letter-spacing: 0.08em;
-              color: #251D19;
-              font-size: 8.5px;
+              color: #1F1714;
+              font-size: 11px;
             }
             .terms-text {
-              margin-bottom: 3px;
-              line-height: 1.35;
+              font-size: 10px;
+              line-height: 1.5;
+              margin-bottom: 5px;
+              color: #382E28;
+            }
+            .terms-text strong {
+              color: #1F1714;
             }
             .signature-area {
               display: grid;
@@ -1663,6 +1669,24 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                         )}
                       </div>
                     )}
+                  </div>
+
+                  {/* Rental Terms & Operational Conditions Section */}
+                  <div className="pt-3.5 border-t border-zinc-200">
+                    <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest block mb-2">
+                      Rental Terms & Operational Conditions
+                    </span>
+                    <div className="bg-zinc-50 border border-zinc-200 p-3.5 space-y-2 text-xs text-zinc-700 leading-relaxed">
+                      <p>
+                        1. <strong className="text-zinc-900 font-bold">CUSTODY TRANSFER & SATISFACTION:</strong> The Recipient (Rentee) acknowledges that all specified assets have been inspected and received in excellent working order. Custody, care, and physical control of these items are transferred fully to the Recipient.
+                      </p>
+                      <p>
+                        2. <strong className="text-zinc-900 font-bold">DAMAGE & PHYSICAL LOSS LIABILITY:</strong> The Recipient accepts full financial responsibility for repair or complete replacement costs of any listed assets in the event of theft, damage, or operational abuse during the designated rental timeframe.
+                      </p>
+                      <p>
+                        3. <strong className="text-zinc-900 font-bold">RECONCILIATION DEADLINE:</strong> All checked-out assets must be returned to the warehouse under custodian observation on or before the due return date. Late returns or failure to reconcile the manifest will trigger standard penalty fees.
+                      </p>
+                    </div>
                   </div>
 
                   {/* Custodian Release Sign-Off Block */}
