@@ -1266,7 +1266,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
                         <span className="font-mono font-bold text-zinc-900">{stats.inventory} records</span>
                       </div>
                       <div className="flex justify-between items-center bg-white p-2 border border-zinc-150">
-                        <span>Transmittal Invoices:</span>
+                        <span>Acknowledgement Receipts:</span>
                         <span className="font-mono font-bold text-zinc-900">{stats.transmittals} records</span>
                       </div>
                       <div className="flex justify-between items-center bg-white p-2 border border-zinc-150">
@@ -1899,7 +1899,7 @@ export default function CustodianHub({ inventory, currentUser }: CustodianHubPro
 
                 {backupConfirm.wipeFirst && (
                   <div className="p-3 bg-red-50 border border-red-200 text-red-750 text-[10px] uppercase font-black tracking-widest mt-2">
-                    ALL EXISTING ASSET PROFILES, TRANSMITTAL INVOICES, CUSTODIAN RECORDS, AND SYSTEM LOGS WILL BE TOTALLY DESTROYED.
+                    ALL EXISTING ASSET PROFILES, ACKNOWLEDGEMENT RECEIPTS, CUSTODIAN RECORDS, AND SYSTEM LOGS WILL BE TOTALLY DESTROYED.
                   </div>
                 )}
               </div>

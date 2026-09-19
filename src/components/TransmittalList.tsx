@@ -65,7 +65,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     });
 
     if (filteredReportTxs.length === 0) {
-      alert("No transmittal records found within the selected date range!");
+      alert("No acknowledgement receipt records found within the selected date range!");
       return;
     }
 
@@ -96,7 +96,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     doc.setFont('Helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    const wrappedReportTitle = doc.splitTextToSize(`OFFICIAL TRANSMITTAL REGISTER REPORT`, 180);
+    const wrappedReportTitle = doc.splitTextToSize(`OFFICIAL ACKNOWLEDGEMENT RECEIPT REGISTER REPORT`, 180);
     wrappedReportTitle.forEach((line: string) => {
       doc.text(line, 15, y);
       y += 5;
@@ -268,7 +268,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
 
     applyCenterWatermarkToAllPages(doc, logoBase64);
 
-    doc.save(`madigun_transmittals_report_${reportStartDate}_to_${reportEndDate}.pdf`);
+    doc.save(`madigun_acknowledgement_receipts_report_${reportStartDate}_to_${reportEndDate}.pdf`);
   };
 
   // Custodian signing support
@@ -308,7 +308,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
         custodianSignedBy: signingCustodian,
         custodianSignedAt: today
       });
-      setSuccessMsg('Transmittal release signed off successfully!');
+      setSuccessMsg('Acknowledgement receipt release signed off successfully!');
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
       setErrorMsg('Failed to sign off release: ' + err.message);
@@ -410,7 +410,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     printWindow.document.write(`
       <html>
         <head>
-          <title>Madigun Rental Transmittal - ${tx.transmittalNo}</title>
+          <title>Madigun Rental Acknowledgement Receipt - ${tx.transmittalNo}</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap');
             @page {
@@ -619,7 +619,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
           </style>
         </head>
         <body>
-          <button class="print-btn no-print" onclick="window.print()">Print Transmittal</button>
+          <button class="print-btn no-print" onclick="window.print()">Print Acknowledgement Receipt</button>
 
           <div class="watermark-container">
             ${customLogo ? `<img src="${customLogo}" />` : `
@@ -658,7 +658,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
               </div>
             </div>
             <div class="document-info">
-              <div class="doc-label">Official Transmittal & Rental Contract</div>
+              <div class="doc-label">Official Acknowledgement Receipt & Rental Contract</div>
               <div class="doc-no">${tx.transmittalNo}</div>
             </div>
           </div>
@@ -1181,7 +1181,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     <div className="space-y-8">
       {/* Header section */}
       <div className="border-b border-zinc-200 pb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-xl font-black font-display text-zinc-900 uppercase tracking-wider">Transmittal Register</h1>
+        <h1 className="text-xl font-black font-display text-zinc-900 uppercase tracking-wider">Acknowledgement Receipt Register</h1>
       </div>
 
       {/* Date-Range Report Generation Panel */}
@@ -1189,7 +1189,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
         <div className="space-y-1 text-center md:text-left">
           <h2 className="text-xs font-black text-zinc-900 uppercase tracking-widest flex items-center gap-2 justify-center md:justify-start">
             <Calendar className="h-3.5 w-3.5 text-zinc-800" />
-            Transmittal Date Range Report
+            Acknowledgement Receipt Date Range Report
           </h2>
         </div>
 
@@ -1233,7 +1233,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
           <input
             id="input-search-tx"
             type="text"
-            placeholder="Search transmittals by TX No., Rentee, or Handler..."
+            placeholder="Search receipts by AR No., Rentee, or Handler..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-zinc-200 text-xs font-semibold uppercase tracking-wider bg-zinc-50 focus:bg-white focus:outline-none focus:border-zinc-900 transition-all text-zinc-800 placeholder-zinc-400"
@@ -1263,7 +1263,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
       {filteredTransmittals.length === 0 ? (
         <div className="bg-white border border-zinc-200 p-12 text-center text-zinc-400">
           <ClipboardCheck className="h-8 w-8 mx-auto mb-3 text-zinc-300" />
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">No transmittal logs found</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">No acknowledgement receipt logs found</p>
           <p className="text-[11px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Try refining your search queries or selecting a different category.</p>
         </div>
       ) : (
@@ -1328,7 +1328,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                 <div>
                   <span className="text-[9px] font-bold font-mono text-zinc-400 tracking-widest block uppercase">LOGISTICS DISPATCH PROFILE</span>
                   <h2 className="text-sm font-black uppercase tracking-widest text-zinc-900 flex items-center mt-0.5">
-                    Transmittal {selectedTx.transmittalNo}
+                    Acknowledgement Receipt {selectedTx.transmittalNo}
                   </h2>
                 </div>
                 <button
@@ -1766,7 +1766,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                       <div className="bg-emerald-50 border border-emerald-200 p-5 text-center text-emerald-800">
                         <CheckCircle className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
                         <p className="text-xs font-bold uppercase tracking-widest text-emerald-850">Fully Reconciled</p>
-                        <p className="text-[11px] text-emerald-600/95 mt-1 leading-relaxed uppercase tracking-wide font-semibold">All assets inside this transmittal batch are safely back in warehouse stock.</p>
+                        <p className="text-[11px] text-emerald-600/95 mt-1 leading-relaxed uppercase tracking-wide font-semibold">All assets inside this acknowledgement receipt batch are safely back in warehouse stock.</p>
                       </div>
 
                       {currentUser?.role === 'Admin' && (
@@ -1911,7 +1911,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                     <div className="bg-zinc-50 border border-zinc-200 p-4 space-y-3">
                       <div>
                         <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Administrative Actions</h4>
-                        <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider mt-1">Void / Delete Transmittal</h3>
+                        <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider mt-1">Void / Delete Acknowledgement Receipt</h3>
                         <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1 leading-normal">
                           Completely void and remove this transaction record.
                           {selectedTx.status !== 'Returned' && (
@@ -1928,14 +1928,14 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                           className="w-full py-2.5 bg-red-50 hover:bg-red-105 text-red-700 border border-red-200 font-bold text-xs uppercase tracking-widest inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <Trash2 className="h-4 w-4" />
-                          Void & Delete Transmittal
+                          Void & Delete Acknowledgement Receipt
                         </button>
                       ) : (
                         <div className="bg-red-50 border border-red-200 p-3.5 space-y-3.5">
                           <div className="text-[11px] font-bold text-red-800 uppercase tracking-wider leading-relaxed">
-                            ⚠️ ARE YOU ABSOLUTELY SURE?
+                             ARE YOU ABSOLUTELY SURE?
                             <span className="block font-normal normal-case text-red-700 mt-1">
-                              This action is completely irreversible. This transmittal and its history will be permanently deleted and a system audit log will be created.
+                              This action is completely irreversible. This acknowledgement receipt and its history will be permanently deleted and a system audit log will be created.
                             </span>
                           </div>
                           <div className="flex gap-2">
@@ -1954,7 +1954,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                   setSelectedTx(null);
                                   setShowDeleteConfirm(false);
                                 } catch (err: any) {
-                                  setErrorMsg(err.message || 'Failed to delete transmittal');
+                                  setErrorMsg(err.message || 'Failed to delete acknowledgement receipt');
                                 }
                               }}
                               className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] uppercase tracking-widest cursor-pointer transition-colors"

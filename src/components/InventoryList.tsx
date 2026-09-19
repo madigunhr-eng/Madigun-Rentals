@@ -580,7 +580,7 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
     
     const rentedQty = selectedItem.quantityTotal - selectedItem.quantityAvailable;
     if (rentedQty > 0) {
-      setErrorMsg(`CANNOT DELETE: ${rentedQty} unit(s) of this asset are currently rented out under active transmittals. Please return them first before deleting.`);
+      setErrorMsg(`CANNOT DELETE: ${rentedQty} unit(s) of this asset are currently rented out under active acknowledgement receipts. Please return them first before deleting.`);
       return;
     }
 
@@ -651,7 +651,7 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
               className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-pointer"
             >
               <Send className="h-3.5 w-3.5 mr-2" />
-              New Transmittal
+              New Acknowledgement Receipt
             </button>
           )}
         </div>
@@ -828,7 +828,7 @@ export default function InventoryList({ items, onAddItem, onUpdateItem, onDelete
                               setIsEditMode(false);
                               const rentedQty = item.quantityTotal - item.quantityAvailable;
                               if (rentedQty > 0) {
-                                setErrorMsg(`CANNOT DELETE: ${rentedQty} unit(s) of this asset are currently rented out under active transmittals. Please return them first before deleting.`);
+                                setErrorMsg(`CANNOT DELETE: ${rentedQty} unit(s) of this asset are currently rented out under active acknowledgement receipts. Please return them first before deleting.`);
                               } else {
                                 setShowDeleteConfirm(true);
                               }

@@ -646,7 +646,7 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-zinc-200 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                  <th className="pb-2.5">Tx No.</th>
+                  <th className="pb-2.5">AR No.</th>
                   <th className="pb-2.5">Rentee</th>
                   <th className="pb-2.5">Checkout</th>
                   <th className="pb-2.5">Days</th>

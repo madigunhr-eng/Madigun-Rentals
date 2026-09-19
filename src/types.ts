@@ -59,6 +59,8 @@ export interface TransmittalItem {
   returnedQuantity: number;
 }
 
+export type AcknowledgementReceiptItem = TransmittalItem;
+
 export interface Transmittal {
   id: string;
   transmittalNo: string;
@@ -78,6 +80,8 @@ export interface Transmittal {
   gatePassRequestedBy?: string;
   gatePassRequestedAt?: string;
 }
+
+export type AcknowledgementReceipt = Transmittal;
 
 export interface DeletedLog {
   id: string;

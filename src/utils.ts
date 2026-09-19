@@ -6,12 +6,14 @@ export function generateTransmittalNo(
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-  const datePrefix = `TX-${year}-${month}${day}-`;
+  const arPrefix = `AR-${year}-${month}${day}-`;
+  const legacyTxPrefix = `TX-${year}-${month}${day}-`;
 
   let maxSequence = 0;
 
   const checkItem = (itemNo: string) => {
-    if (itemNo && itemNo.startsWith(datePrefix)) {
+    if (!itemNo) return;
+    if (itemNo.startsWith(arPrefix) || itemNo.startsWith(legacyTxPrefix)) {
       const parts = itemNo.split('-');
       const seqStr = parts[parts.length - 1];
       const seqNum = parseInt(seqStr, 10);
@@ -27,8 +29,10 @@ export function generateTransmittalNo(
   const nextSequence = maxSequence + 1;
   const seqFormatted = String(nextSequence).padStart(2, '0');
 
-  return `${datePrefix}${seqFormatted}`;
+  return `${arPrefix}${seqFormatted}`;
 }
+
+export const generateAcknowledgementReceiptNo = generateTransmittalNo;
 
 export const DEFAULT_CATEGORIES = [
   'Corkage & Service Permits',

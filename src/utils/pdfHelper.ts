@@ -208,7 +208,7 @@ export async function generateSystemWhitePaperPDF() {
   doc.setFont('Helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(63, 63, 70);
-  const abstractText = "This authoritative document details the architecture, operational design, methodologies, and technical specifications of the Madigun Logistics System. Combining real-time reactive data pipelines, secure multi-user authorization, granular physical warehouse grid tracking, and comprehensive transmittal ledgering, the system represents an advanced paradigm in modern hospitality resource management, asset auditing, and shrinkage prevention.";
+  const abstractText = "This authoritative document details the architecture, operational design, methodologies, and technical specifications of the Madigun Logistics System. Combining real-time reactive data pipelines, secure multi-user authorization, granular physical warehouse grid tracking, and comprehensive acknowledgement receipt ledgering, the system represents an advanced paradigm in modern hospitality resource management, asset auditing, and shrinkage prevention.";
   const wrappedAbstract = doc.splitTextToSize(abstractText, 180);
   let abstractY = paperTitleY + 8;
   wrappedAbstract.forEach((line: string) => {
@@ -263,7 +263,7 @@ export async function generateSystemWhitePaperPDF() {
   doc.setFont('Helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(39, 39, 42);
-  const archText = "The Madigun Logistics System utilizes a reactive, client-serverless architecture sitting atop Google Cloud Run and Firebase Firestore. At its core, the system relies on real-time data streaming. Rather than conventional request-response polling, the client establishes persistent duplex WebChannel connections utilizing Firestore's reactive 'onSnapshot' listeners. This ensures that any change in stock levels, room asset deployments, or transmittal status is propagated to all logged-in terminals in under 150ms. Concurrency is resolved via atomic batched transactions, protecting physical inventory totals from race conditions during high-volume event handovers.";
+  const archText = "The Madigun Logistics System utilizes a reactive, client-serverless architecture sitting atop Google Cloud Run and Firebase Firestore. At its core, the system relies on real-time data streaming. Rather than conventional request-response polling, the client establishes persistent duplex WebChannel connections utilizing Firestore's reactive 'onSnapshot' listeners. This ensures that any change in stock levels, room asset deployments, or acknowledgement receipt status is propagated to all logged-in terminals in under 150ms. Concurrency is resolved via atomic batched transactions, protecting physical inventory totals from race conditions during high-volume event handovers.";
   const wrappedArch = doc.splitTextToSize(archText, 180);
   wrappedArch.forEach((line: string) => {
     doc.text(line, 15, y);
@@ -281,7 +281,7 @@ export async function generateSystemWhitePaperPDF() {
   doc.setFontSize(9);
   doc.setTextColor(39, 39, 42);
   const classText = "To ensure rigorous controls, assets are split into two distinct schemas:\n\n" +
-    "• RENTABLE ASSETS: Managed via the Transmittals Engine. These undergo a strict Checkout, Pending Return, and Check-in lifecycle. Handover states and custodian responsibilities are locked to formal transmittal IDs.\n\n" +
+    "• RENTABLE ASSETS: Managed via the Acknowledgement Receipts Engine. These undergo a strict Checkout, Pending Return, and Check-in lifecycle. Handover states and custodian responsibilities are locked to formal acknowledgement receipt IDs.\n\n" +
     "• STATIONARY ASSETS: Managed via the Requisition and Installation Engine. These represent fixed room properties (appliances, beds, room-bound fixtures). Withdrawals and warehouse returns are batch-registered, and a real-time, co-signed PDF requisition receipt is automatically generated for operational audit trails.";
   const wrappedClass = doc.splitTextToSize(classText, 180);
   wrappedClass.forEach((line: string) => {
@@ -304,7 +304,7 @@ export async function generateSystemWhitePaperPDF() {
   doc.setFontSize(9);
   doc.setTextColor(39, 39, 42);
   const controlText = "To provide high-level financial oversight, all registered rental and stationary inventory profiles now incorporate two critical parameters:\n\n" +
-    "• PRICE VALUE: Establishes the replacement value of each property unit. This underpins the financial exposure metrics displayed in transmittals, allowing management to immediately assess the total worth of assets checked out by external clients or installed in specific resort offices.\n\n" +
+    "• PRICE VALUE: Establishes the replacement value of each property unit. This underpins the financial exposure metrics displayed in acknowledgement receipts, allowing management to immediately assess the total worth of assets checked out by external clients or installed in specific resort offices.\n\n" +
     "• ESTIMATED LIFESPAN: Documents the operational lifecycle (e.g., '5 Years', '24 Months') of the assets. This drives proactive maintenance schedules, depreciation calculations, and automated disposal forecasting, ensuring the hotel's physical asset value is accurately amortized.";
   const wrappedControl = doc.splitTextToSize(controlText, 180);
   wrappedControl.forEach((line: string) => {
@@ -339,7 +339,7 @@ export async function generateSystemWhitePaperPDF() {
   doc.setFont('Helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(39, 39, 42);
-  const summaryText = "Implementing the Madigun Property and Warehouse system delivers direct operational enhancements: zero double-booking errors due to real-time sync, an average 40% speed-up in event handovers via digitized transmittals, 100% auditability for room property with co-signed requisitions, and robust asset depreciation scheduling via valuation-lifespan modeling. Madigun Hotel & Events remains at the cutting edge of hospitality logistics.";
+  const summaryText = "Implementing the Madigun Property and Warehouse system delivers direct operational enhancements: zero double-booking errors due to real-time sync, an average 40% speed-up in event handovers via digitized acknowledgement receipts, 100% auditability for room property with co-signed requisitions, and robust asset depreciation scheduling via valuation-lifespan modeling. Madigun Hotel & Events remains at the cutting edge of hospitality logistics.";
   const wrappedSummary = doc.splitTextToSize(summaryText, 180);
   wrappedSummary.forEach((line: string) => {
     doc.text(line, 15, y);

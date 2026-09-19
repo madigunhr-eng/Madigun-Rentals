@@ -350,10 +350,10 @@ export default function RentalHalls({
       rentalHours
     );
 
-    // Check if venue has an ongoing transmittal for the selected date interval
+    // Check if venue has an ongoing booking for the selected date interval
     const dateCollisionTx = getOngoingBookingForVenue(selectedHall, schedule.startDateOnly, schedule.endDateOnly);
     if (dateCollisionTx) {
-      return setErrorMsg(`CANNOT BOOK: Venue "${selectedHall.name}" already has an ongoing transmittal booking (${dateCollisionTx.transmittalNo} for ${dateCollisionTx.rentee}) during ${schedule.startDateOnly} to ${schedule.endDateOnly}.`);
+      return setErrorMsg(`CANNOT BOOK: Venue "${selectedHall.name}" already has an ongoing acknowledgement receipt booking (${dateCollisionTx.transmittalNo} for ${dateCollisionTx.rentee}) during ${schedule.startDateOnly} to ${schedule.endDateOnly}.`);
     }
 
     const hallDurationDesc = durationMode === 'Days'
@@ -410,7 +410,7 @@ export default function RentalHalls({
 
       setIsBookModalOpen(false);
       setIsSubmitting(false);
-      setSuccessMsg(`Booking confirmed for ${selectedHall.name} (${schedule.startStr} - ${schedule.endStr})! Redirecting to Transmittals...`);
+      setSuccessMsg(`Booking confirmed for ${selectedHall.name} (${schedule.startStr} - ${schedule.endStr})! Redirecting to Acknowledgement Receipts...`);
       setTimeout(() => {
         onNavigateToTransmittals();
       }, 1500);
@@ -832,7 +832,7 @@ export default function RentalHalls({
 
               <div className="bg-amber-50/70 p-3.5 border border-amber-200 text-xs space-y-1">
                 <div className="font-bold text-zinc-950 uppercase">
-                  Transmittal: <span className="font-mono text-amber-800">{selectedTxToExtend.transmittalNo}</span>
+                  Acknowledgement Receipt: <span className="font-mono text-amber-800">{selectedTxToExtend.transmittalNo}</span>
                 </div>
                 <div className="font-semibold text-zinc-700">
                   Guest / Rentee: <span className="font-bold text-zinc-900">{selectedTxToExtend.rentee}</span>
@@ -1780,7 +1780,7 @@ export default function RentalHalls({
                     disabled={isSubmitting}
                     className="px-5 py-2 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 cursor-pointer flex items-center shadow-md"
                   >
-                    {isSubmitting ? 'Processing...' : 'Confirm Venue Booking & Issue Transmittal'}
+                    {isSubmitting ? 'Processing...' : 'Confirm Venue Booking & Issue Acknowledgement Receipt'}
                   </button>
                 </div>
               </form>

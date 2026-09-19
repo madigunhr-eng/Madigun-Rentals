@@ -436,7 +436,7 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
                 </h2>
               </div>
               <p className="text-xs text-zinc-500 mt-1 max-w-xl">
-                Upload your official brand insignia. Once saved, it is <span className="font-bold text-zinc-900">permanently embedded in the Cloud Database</span> and used across all mobile devices, tablets, desktop workstations, and generated PDF transmittals.
+                Upload your official brand insignia. Once saved, it is <span className="font-bold text-zinc-900">permanently embedded in the Cloud Database</span> and used across all mobile devices, tablets, desktop workstations, and generated PDF acknowledgement receipts.
               </p>
             </div>
 
@@ -566,14 +566,14 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
               <div className="bg-zinc-900/80 p-2.5 border border-zinc-800 space-y-1">
                 <span className="font-bold text-amber-300 uppercase">1. Front Desk (Staff Account)</span>
                 <p className="text-[11px] text-zinc-300 font-sans">
-                  Operational staff access to <strong>Transmittals</strong>, <strong>Rental Items</strong>, and <strong>Rental Halls & Event Venues</strong>.
+                  Operational staff access to <strong>Acknowledgement Receipts</strong>, <strong>Rental Items</strong>, and <strong>Rental Halls & Event Venues</strong>.
                 </p>
               </div>
 
               <div className="bg-zinc-900/80 p-2.5 border border-zinc-800 space-y-1">
                 <span className="font-bold text-emerald-300 uppercase">2. Managing Director (Executive Account)</span>
                 <p className="text-[11px] text-zinc-300 font-sans">
-                  Operational & supervisory access to property management and transmittals.
+                  Operational & supervisory access to property management and acknowledgement receipts.
                 </p>
               </div>
             </div>

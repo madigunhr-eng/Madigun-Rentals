@@ -92,7 +92,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
     if (!dateCheckout) return setErrorMsg('Date Checkout is required');
     if (!dateCheckin) return setErrorMsg('Target Date Check-in is required');
     if (dateCheckin < dateCheckout) return setErrorMsg('Check-in (Return) date cannot be earlier than Checkout date');
-    if (selectedItems.length === 0) return setErrorMsg('Please add at least 1 item to the transmittal');
+    if (selectedItems.length === 0) return setErrorMsg('Please add at least 1 item to the acknowledgement receipt');
 
     // Check for any items with quantity of 0
     const zeroItem = selectedItems.find(si => si.quantity <= 0);
@@ -150,7 +150,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
         notes
       });
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to create transmittal');
+      setErrorMsg(err.message || 'Failed to create acknowledgement receipt');
       setIsSubmitting(false);
     }
   };
@@ -160,7 +160,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
       {/* Header */}
       <div className="flex justify-between items-center border-b border-zinc-200 pb-6">
         <div>
-          <h1 className="text-xl font-black font-display text-zinc-900 uppercase tracking-wider">Create Transmittal</h1>
+          <h1 className="text-xl font-black font-display text-zinc-900 uppercase tracking-wider">Create Acknowledgement Receipt</h1>
         </div>
         <button
           id="btn-cancel-tx-top"
@@ -187,7 +187,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
         {/* Left column: Recipient and checkout details */}
         <div className="lg:col-span-1 space-y-5 bg-white p-4 sm:p-6 border border-zinc-200">
           <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest pb-3 border-b border-zinc-200">
-            Transmittal Logistics
+            Acknowledgement Receipt Logistics
           </h3>
 
           {/* Handler (Issuer) */}
@@ -374,8 +374,8 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
             {selectedItems.length === 0 ? (
               <div className="flex-1 py-12 flex flex-col justify-center items-center text-center text-zinc-400">
                 <ClipboardList className="h-8 w-8 text-zinc-300 mb-2" />
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Your transmittal is currently empty.</p>
-                <p className="text-[11px] text-zinc-400 max-w-xs mt-1 uppercase tracking-wider font-semibold">Use the search box above to add high-quality assets to the transmittal manifest.</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Your acknowledgement receipt is currently empty.</p>
+                <p className="text-[11px] text-zinc-400 max-w-xs mt-1 uppercase tracking-wider font-semibold">Use the search box above to add assets to the acknowledgement receipt manifest.</p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-[300px]">

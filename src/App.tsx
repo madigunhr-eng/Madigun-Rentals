@@ -884,7 +884,7 @@ export default function App() {
                   >
                     <span className="flex items-center gap-3">
                       <Send className="h-4 w-4" />
-                      Transmittals
+                      Acknowledgement Receipts
                     </span>
                     <span className="text-[10px] font-mono px-1.5 py-0.5 bg-zinc-200 text-zinc-800">
                       {transmittals.length}
@@ -1067,7 +1067,7 @@ export default function App() {
                     : 'border-transparent text-zinc-400 hover:text-zinc-900'
                 }`}
               >
-                Transmittals
+                Acknowledgement Receipts
               </button>
 
               {!isFrontDesk && (

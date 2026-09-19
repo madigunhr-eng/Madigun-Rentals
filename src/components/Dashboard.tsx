@@ -93,7 +93,7 @@ export default function Dashboard({
               className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 text-xs font-bold uppercase tracking-widest text-white bg-zinc-900 hover:bg-zinc-800 transition-colors focus:outline-none cursor-pointer animate-pulse"
             >
               <Send className="h-3.5 w-3.5 mr-2" />
-              New Transmittal
+              New Acknowledgement Receipt
             </button>
           )}
         </div>
@@ -112,12 +112,12 @@ export default function Dashboard({
           icon={ArrowUpRight}
         />
         <StatCard
-          title="Active Transmittals"
+          title="Active Acknowledgement Receipts"
           value={pendingReturnCount}
           icon={Send}
         />
         <StatCard
-          title="Overdue Transmittals"
+          title="Overdue Acknowledgement Receipts"
           value={overdueTransmittals.length}
           icon={Clock}
         />
@@ -125,11 +125,11 @@ export default function Dashboard({
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        {/* Recent Transmittals Column */}
+        {/* Recent Acknowledgement Receipts Column */}
         <div className="lg:col-span-2 bg-white border border-zinc-200 p-4 sm:p-6 flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-900">Recent Transmittal Logs</h2>
+              <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-900">Recent Acknowledgement Receipts</h2>
             </div>
             <button
               id="link-view-all-tx"
@@ -144,13 +144,13 @@ export default function Dashboard({
             {transmittals.length === 0 ? (
               <div className="py-12 text-center text-zinc-400">
                 <Send className="h-8 w-8 mx-auto mb-2 text-zinc-300" />
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">No transmittal history</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">No acknowledgement receipt history</p>
               </div>
             ) : (
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-zinc-200 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                    <th className="py-3 px-2">TX ID</th>
+                    <th className="py-3 px-2">AR NO.</th>
                     <th className="py-3 px-2">Rentee Name</th>
                     <th className="py-3 px-2">Units Included</th>
                     <th className="py-3 px-2">Due Date</th>

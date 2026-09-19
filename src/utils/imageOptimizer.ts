@@ -5,7 +5,7 @@
  * 1. The image fits comfortably into Firestore's 1MB document size limit (typically 30-120KB).
  * 2. High-resolution mobile phone camera photos or massive 10MB images do not overload memory.
  * 3. Preserves PNG alpha transparency or outputs high-quality image.
- * 4. Renders sharp and crisp on high-DPI retina displays, mobile screens, desktop headers, PDF reports, and transmittal printouts.
+ * 4. Renders sharp and crisp on high-DPI retina displays, mobile screens, desktop headers, PDF reports, and acknowledgement receipt printouts.
  */
 export async function optimizeLogoImage(
   file: File,

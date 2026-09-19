@@ -32,11 +32,11 @@ export default function DeletedLogsList({ logs, onRestoreTransmittal, onDeleteLo
     setSuccessMsg(null);
     try {
       await onRestoreTransmittal(log);
-      setSuccessMsg(`Transmittal ${log.transmittalNo} has been restored successfully!`);
+      setSuccessMsg(`Acknowledgement Receipt ${log.transmittalNo} has been restored successfully!`);
       setConfirmingId(null);
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to restore transmittal.');
+      setErrorMsg(err.message || 'Failed to restore acknowledgement receipt.');
     } finally {
       setRestoringId(null);
     }
@@ -78,7 +78,7 @@ export default function DeletedLogsList({ logs, onRestoreTransmittal, onDeleteLo
           <input
             id="input-search-logs"
             type="text"
-            placeholder="Search logs by TX No., Rentee, or Custodian Handler..."
+            placeholder="Search logs by AR No., Rentee, or Custodian Handler..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-zinc-200 text-xs font-semibold uppercase tracking-wider bg-zinc-50 focus:bg-white focus:outline-none focus:border-zinc-900 transition-all text-zinc-800 placeholder-zinc-400"
@@ -93,7 +93,7 @@ export default function DeletedLogsList({ logs, onRestoreTransmittal, onDeleteLo
           <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">No logs found</p>
           <p className="text-[11px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">
             {logs.length === 0 
-              ? "All transmittal records are currently active and intact." 
+              ? "All acknowledgement receipt records are currently active and intact." 
               : "Try refining your search queries."}
           </p>
         </div>
@@ -103,7 +103,7 @@ export default function DeletedLogsList({ logs, onRestoreTransmittal, onDeleteLo
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-zinc-200 bg-zinc-50 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                  <th className="py-3 px-4">TX Code</th>
+                  <th className="py-3 px-4">AR Code</th>
                   <th className="py-3 px-4">Deleted At</th>
                   <th className="py-3 px-4">Recipient</th>
                   <th className="py-3 px-4">Custodian</th>
@@ -239,7 +239,7 @@ export default function DeletedLogsList({ logs, onRestoreTransmittal, onDeleteLo
           </div>
           <div className="bg-zinc-50/50 p-4 border-t border-zinc-200 flex items-center gap-2.5 text-[10px] uppercase font-bold tracking-widest text-zinc-400">
             <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-            <span>Note: This is an immutable audit log. Restoring a transmittal recreates it and removes the matching deletion entry from this list.</span>
+            <span>Note: This is an immutable audit log. Restoring an acknowledgement receipt recreates it and removes the matching deletion entry from this list.</span>
           </div>
         </div>
       )}
