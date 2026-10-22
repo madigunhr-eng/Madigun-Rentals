@@ -19,7 +19,8 @@ import {
   Package,
   Layers,
   Sparkles,
-  Info
+  Info,
+  Gift
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -111,6 +112,29 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
     const invItem = inventory.find(i => i.id === item.itemId || (item.sku && i.sku === item.sku));
     const isHall = isRentalHallItem(item, invItem);
     const itemName = item.name || '';
+
+    // 0. Check if item is allocated as Complimentary (Courtesy / Free)
+    if (item.isComplimentary || item.allocationType === 'Complimentary') {
+      const start = new Date(dateCheckout || new Date());
+      const end = new Date(dateCheckin || dateCheckout || new Date());
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24))) || 1;
+      const invRate = Number(invItem?.dailyRentalPrice || invItem?.rentalPrice || getFallbackPrice(item.name));
+      const courtesyValue = invRate * days * (item.quantity || 1);
+
+      return {
+        revenue: 0,
+        courtesyValue,
+        days,
+        rate: 0,
+        isHourly: false,
+        isFlatFee: false,
+        isHall,
+        isComplimentary: true,
+        stream: (isHall ? 'hall' : 'item') as 'hall' | 'item',
+        rateLabel: '₱0 (COMPLIMENTARY)'
+      };
+    }
 
     // 1. Check for day pattern embedded in name: e.g., "Grand Ballroom (2 Day(s) @ ₱18,000/day: ...)"
     const dayMatch = itemName.match(/(\d+)\s*Day\(s\)\s*@\s*₱?([\d,]+)\/day/i);
@@ -323,6 +347,9 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
     let totalHallsBookings = 0;
     let totalItemsContracts = 0;
 
+    let totalComplimentaryUnits = 0;
+    let totalWaivedCourtesyValue = 0;
+
     filteredTransmittals.forEach(tx => {
       totalRevenue += tx.totalRevenue;
       itemsRevenue += tx.itemsRevenue;
@@ -330,6 +357,13 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
 
       if (tx.hallsRevenue > 0) totalHallsBookings += 1;
       if (tx.itemsRevenue > 0) totalItemsContracts += 1;
+
+      tx.itemsDetail.forEach((it: any) => {
+        if (it.isComplimentary) {
+          totalComplimentaryUnits += (it.quantity || 1);
+          totalWaivedCourtesyValue += (it.courtesyValue || 0);
+        }
+      });
 
       if (tx.status === 'Returned') {
         completedRevenue += tx.totalRevenue;
@@ -353,7 +387,9 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
       totalHallsBookings,
       totalItemsContracts,
       itemsPercentage,
-      hallsPercentage
+      hallsPercentage,
+      totalComplimentaryUnits,
+      totalWaivedCourtesyValue
     };
   }, [filteredTransmittals]);
 
@@ -589,7 +625,7 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
       </div>
 
       {/* Primary Metrics Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Total Rentals Revenue */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -668,11 +704,38 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
           </div>
         </motion.div>
 
-        {/* Active Accounts Value */}
+        {/* Complimentary Courtesy Allocations */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, delay: 0.15 }}
+          className="bg-white border border-emerald-250 p-5 relative overflow-hidden bg-emerald-50/20"
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest block mb-1 flex items-center gap-1">
+                <Gift className="h-3 w-3 inline" />
+                Complimentary Items
+              </span>
+              <h3 className="text-2xl font-extrabold font-display text-emerald-800 tracking-tight">
+                {metrics.totalComplimentaryUnits} units
+              </h3>
+            </div>
+            <div className="p-2 bg-emerald-100 border border-emerald-200 text-emerald-800">
+              <Gift className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-between text-[10px] font-bold text-emerald-700 uppercase tracking-wide">
+            <span>Waived Courtesy:</span>
+            <span className="font-mono bg-emerald-100/90 px-1.5 py-0.5">₱{Number(metrics.totalWaivedCourtesyValue).toLocaleString()}</span>
+          </div>
+        </motion.div>
+
+        {/* Active Accounts Value */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, delay: 0.2 }}
           className="bg-white border border-zinc-200 p-5 relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1078,22 +1141,28 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
                       <div className="space-y-0.5 max-w-[300px]">
                         <div className="flex items-center gap-1.5">
                           <span className={`inline-block px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider border ${
-                            item.stream === 'hall' 
+                            item.isComplimentary
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : item.stream === 'hall' 
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                               : 'bg-zinc-100 text-zinc-700 border-zinc-200'
                           }`}>
-                            {item.stream === 'hall' ? 'HALL VENUE' : 'RENTAL ITEM'}
+                            {item.isComplimentary ? '🎁 COMPLIMENTARY' : item.stream === 'hall' ? 'HALL VENUE' : 'RENTAL ITEM'}
                           </span>
                           <p className="font-bold text-zinc-800">{item.name}</p>
                         </div>
                         <p className="text-[10px] text-zinc-400 font-mono uppercase tracking-wide">{item.sku}</p>
                         <p className="text-[10px] text-zinc-500 font-medium">
-                          Billing Rate Basis: <span className="text-zinc-800 font-mono font-bold">{item.rateLabel}</span>
+                          Billing Rate Basis: <span className={`font-mono font-bold ${item.isComplimentary ? 'text-emerald-750' : 'text-zinc-800'}`}>{item.rateLabel}</span>
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="font-mono font-bold text-zinc-900">
-                          ₱{item.revenue.toLocaleString()}
+                          {item.isComplimentary ? (
+                            <span className="text-emerald-700 font-extrabold">₱0 (Free)</span>
+                          ) : (
+                            `₱${item.revenue.toLocaleString()}`
+                          )}
                         </p>
                         <p className="text-[10px] text-zinc-500 font-semibold">
                           {item.quantity} unit(s)

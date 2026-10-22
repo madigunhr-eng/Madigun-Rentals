@@ -57,6 +57,8 @@ export interface TransmittalItem {
   sku: string;
   quantity: number;
   returnedQuantity: number;
+  isComplimentary?: boolean;
+  allocationType?: 'Rented' | 'Complimentary';
 }
 
 export type AcknowledgementReceiptItem = TransmittalItem;

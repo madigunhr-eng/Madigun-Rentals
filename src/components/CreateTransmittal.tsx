@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Calendar, User, MapPin, ClipboardList, Send, X, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Calendar, User, MapPin, ClipboardList, Send, X, AlertCircle, Gift, Tag, Check } from 'lucide-react';
 import { InventoryItem, TransmittalItem } from '../types';
 import { localStore } from '../localStore';
 
@@ -27,10 +27,11 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
   const [dateCheckin, setDateCheckin] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Selected items in this transmittal
+  // Selected items in this transmittal with complimentary allocation flag
   const [selectedItems, setSelectedItems] = useState<{
     itemId: string;
     quantity: number;
+    isComplimentary: boolean;
   }[]>([]);
 
   // Search/add helper state
@@ -52,11 +53,23 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
   });
 
   // Handle adding an item to the transmittal list
-  const handleAddItem = (item: InventoryItem) => {
-    setSelectedItems([...selectedItems, { itemId: item.id, quantity: 1 }]);
+  const handleAddItem = (item: InventoryItem, isComplimentary = false) => {
+    setSelectedItems([...selectedItems, { itemId: item.id, quantity: 1, isComplimentary }]);
     setSearchItemQuery('');
     setShowItemDropdown(false);
     setErrorMsg('');
+  };
+
+  // Toggle complimentary status for an item
+  const handleToggleComplimentary = (itemId: string, isComplimentary: boolean) => {
+    setSelectedItems(selectedItems.map(si => 
+      si.itemId === itemId ? { ...si, isComplimentary } : si
+    ));
+  };
+
+  // Batch toggle all items
+  const handleSetAllComplimentary = (complimentary: boolean) => {
+    setSelectedItems(selectedItems.map(si => ({ ...si, isComplimentary: complimentary })));
   };
 
   // Handle removing an item from the transmittal list
@@ -126,15 +139,18 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
       }
     }
 
-    // Build transmittal items array
+    // Build transmittal items array with complimentary flag
     const transmittalItems: TransmittalItem[] = selectedItems.map(si => {
       const item = inventory.find(i => i.id === si.itemId)!;
+      const isComp = !!si.isComplimentary;
       return {
         itemId: si.itemId,
         name: item.name,
         sku: item.sku,
         quantity: si.quantity,
-        returnedQuantity: 0 // initially 0 returned
+        returnedQuantity: 0, // initially 0 returned
+        isComplimentary: isComp,
+        allocationType: isComp ? 'Complimentary' : 'Rented'
       };
     });
 
@@ -335,24 +351,51 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                           return (
                             <div
                               key={item.id}
-                              onClick={() => handleAddItem(item)}
-                              className="p-3.5 hover:bg-zinc-50 cursor-pointer flex justify-between items-center text-xs"
+                              className="p-3 hover:bg-zinc-50 flex flex-wrap justify-between items-center text-xs gap-2 transition-colors border-b border-zinc-100 last:border-0"
                             >
-                              <div>
+                              <div className="flex-1 min-w-[200px]" onClick={() => handleAddItem(item, false)}>
                                 <div className="font-bold text-zinc-900 uppercase tracking-tight">{item.name}</div>
-                                <div className="text-[10px] text-zinc-450 font-mono mt-0.5 uppercase tracking-wide">
+                                <div className="text-[10px] text-zinc-500 font-mono mt-0.5 uppercase tracking-wide">
                                   {item.sku} • {item.category} • Rate: ₱{Number(item.rentalPrice || 0).toLocaleString()}
+                                  {!isNoQty && (
+                                    <span className="ml-2 font-bold text-zinc-800">({item.quantityAvailable} avail)</span>
+                                  )}
                                 </div>
                               </div>
-                              {isNoQty ? (
-                                <span className="text-[9px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 uppercase tracking-wider">
-                                  Service / Corkage Fee
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-bold bg-zinc-100 text-zinc-800 border border-zinc-200 px-2 py-0.5 uppercase tracking-wider">
-                                  {item.quantityAvailable} units left
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isNoQty ? (
+                                  <span className="text-[9px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 uppercase tracking-wider">
+                                    Service Fee
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-bold bg-zinc-100 text-zinc-700 border border-zinc-200 px-2 py-0.5 uppercase tracking-wider">
+                                    {item.quantityAvailable} left
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddItem(item, false);
+                                  }}
+                                  className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-[9px] uppercase tracking-wider cursor-pointer"
+                                  title="Add as standard rented asset"
+                                >
+                                  + Rented
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddItem(item, true);
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                                  title="Add as free complimentary courtesy asset"
+                                >
+                                  <Gift className="h-3 w-3" />
+                                  + Complimentary
+                                </button>
+                              </div>
                             </div>
                           );
                         })
@@ -366,19 +409,49 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
 
           {/* Selected items grid table */}
           <div className="bg-white border border-zinc-200 flex-1 p-6 flex flex-col">
-            <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest pb-3 border-b border-zinc-200 flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-zinc-850" />
-              Manifest Batch List ({selectedItems.length} profile{selectedItems.length !== 1 ? 's' : ''})
-            </h3>
+            {/* Manifest Header with Counts & Batch Toggles */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-200">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-zinc-850" />
+                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest">
+                  Manifest Batch List ({selectedItems.length} profile{selectedItems.length !== 1 ? 's' : ''})
+                </h3>
+              </div>
+
+              {selectedItems.length > 0 && (
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className="text-zinc-600 font-mono font-bold bg-zinc-100 px-2 py-0.5 border border-zinc-200">
+                    {selectedItems.filter(s => !s.isComplimentary).length} Rented • {selectedItems.filter(s => s.isComplimentary).length} Complimentary
+                  </span>
+                  <div className="h-3 w-[1px] bg-zinc-300 mx-0.5" />
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllComplimentary(false)}
+                    className="text-zinc-700 hover:text-zinc-950 font-bold uppercase tracking-wider px-1.5 py-0.5 hover:bg-zinc-100 transition-colors cursor-pointer"
+                  >
+                    Mark All Rented
+                  </button>
+                  <span className="text-zinc-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllComplimentary(true)}
+                    className="text-emerald-750 hover:text-emerald-900 font-bold uppercase tracking-wider px-1.5 py-0.5 hover:bg-emerald-50 transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Gift className="h-3 w-3" />
+                    Mark All Complimentary
+                  </button>
+                </div>
+              )}
+            </div>
 
             {selectedItems.length === 0 ? (
               <div className="flex-1 py-12 flex flex-col justify-center items-center text-center text-zinc-400">
                 <ClipboardList className="h-8 w-8 text-zinc-300 mb-2" />
                 <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Your acknowledgement receipt is currently empty.</p>
-                <p className="text-[11px] text-zinc-400 max-w-xs mt-1 uppercase tracking-wider font-semibold">Use the search box above to add assets to the acknowledgement receipt manifest.</p>
+                <p className="text-[11px] text-zinc-400 max-w-xs mt-1 uppercase tracking-wider font-semibold">Use the search box above to add assets to the acknowledgement receipt manifest as rented or complimentary items.</p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-[300px]">
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-[340px]">
                 {selectedItems.map((si, index) => {
                   const item = inventory.find(i => i.id === si.itemId)!;
                   if (!item) return null;
@@ -390,60 +463,162 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       key={si.itemId}
-                      className={`p-4 border flex items-center justify-between gap-4 ${
-                        isNoQty ? 'bg-amber-50/50 border-amber-200' : 'bg-zinc-50 border-zinc-200'
+                      className={`p-4 border transition-all ${
+                        si.isComplimentary
+                          ? 'bg-emerald-50/60 border-emerald-300 shadow-xs'
+                          : isNoQty
+                          ? 'bg-amber-50/50 border-amber-200'
+                          : 'bg-zinc-50 border-zinc-200'
                       }`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-zinc-900 uppercase tracking-tight text-xs flex items-center gap-2">
-                          {item.name}
-                          {isNoQty && (
-                            <span className="text-[9px] font-extrabold text-amber-900 bg-amber-100 px-1.5 py-0.5 border border-amber-300 uppercase">
-                              Corkage / Service Permit
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-zinc-900 uppercase tracking-tight text-xs">
+                              {item.name}
                             </span>
-                          )}
+                            {si.isComplimentary && (
+                              <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 uppercase tracking-wider flex items-center gap-1">
+                                <Gift className="h-2.5 w-2.5" />
+                                Complimentary / Courtesy
+                              </span>
+                            )}
+                            {isNoQty && (
+                              <span className="text-[9px] font-extrabold text-amber-900 bg-amber-100 px-1.5 py-0.5 border border-amber-300 uppercase">
+                                Corkage / Service Permit
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-zinc-500 font-mono mt-1 uppercase tracking-wide flex flex-wrap items-center gap-x-2">
+                            <span>{item.sku}</span>
+                            <span>•</span>
+                            <span>{item.category}</span>
+                            <span>•</span>
+                            <span>
+                              Rate:{' '}
+                              {si.isComplimentary ? (
+                                <>
+                                  <span className="line-through text-zinc-400">₱{Number(item.rentalPrice || 0).toLocaleString()}</span>
+                                  <span className="text-emerald-800 font-extrabold ml-1.5">₱0 (Free Courtesy)</span>
+                                </>
+                              ) : (
+                                <span className="text-zinc-900 font-bold">₱{Number(item.rentalPrice || 0).toLocaleString()}</span>
+                              )}
+                            </span>
+                            {!isNoQty && (
+                              <>
+                                <span>•</span>
+                                <span className="text-zinc-800 font-semibold">{item.quantityAvailable} units available</span>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-zinc-400 font-mono mt-0.5 uppercase tracking-wide">
-                          {item.sku} • {item.category} • Rate: <span className="text-emerald-700 font-bold">₱{Number(item.rentalPrice || 0).toLocaleString()}</span>
-                          {!isNoQty && (
-                            <> • <span className="text-zinc-900 font-bold">{item.quantityAvailable} units available</span></>
-                          )}
-                        </div>
-                      </div>
 
-                      {/* Quantity Selector and Delete */}
-                      <div className="flex items-center gap-4 shrink-0">
-                        <div className="flex flex-col items-end">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
-                            {isNoQty ? 'Permit Count' : 'Quantity'}
-                          </label>
-                          <input
-                            id={`qty-input-${item.sku}`}
-                            type="number"
-                            min="0"
-                            max={isNoQty ? 9999 : item.quantityAvailable}
-                            value={si.quantity === 0 ? '' : si.quantity}
-                            onChange={(e) => {
-                              const val = e.target.value === '' ? 0 : Number(e.target.value);
-                              handleQuantityChange(si.itemId, val);
-                            }}
-                            className="w-16 px-2 py-1.5 text-center font-bold text-xs font-mono bg-white border border-zinc-200 focus:outline-none focus:border-zinc-900"
-                          />
-                        </div>
+                        {/* Allocation Mode Segmented Switch, Qty Input, and Remove */}
+                        <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                          {/* Rented vs Complimentary Toggle */}
+                          <div className="flex flex-col items-center">
+                            <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                              Allocation
+                            </label>
+                            <div className="flex items-center bg-zinc-200/80 p-0.5 border border-zinc-300 text-[10px] font-bold">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleComplimentary(si.itemId, false)}
+                                className={`px-2.5 py-1 uppercase tracking-wider transition-all cursor-pointer ${
+                                  !si.isComplimentary
+                                    ? 'bg-zinc-900 text-white font-extrabold shadow-xs'
+                                    : 'text-zinc-600 hover:text-zinc-900'
+                                }`}
+                              >
+                                Rented
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleComplimentary(si.itemId, true)}
+                                className={`px-2.5 py-1 uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                                  si.isComplimentary
+                                    ? 'bg-emerald-700 text-white font-extrabold shadow-xs'
+                                    : 'text-zinc-600 hover:text-emerald-800'
+                                }`}
+                              >
+                                <Gift className="h-3 w-3" />
+                                Comp
+                              </button>
+                            </div>
+                          </div>
 
-                        <button
-                          id={`btn-remove-item-${item.sku}`}
-                          type="button"
-                          onClick={() => handleRemoveItem(si.itemId)}
-                          className="p-1.5 text-zinc-400 hover:text-red-750 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all cursor-pointer mt-4"
-                          title="Remove item"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                          {/* Quantity Selector */}
+                          <div className="flex flex-col items-end">
+                            <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                              {isNoQty ? 'Permit Count' : 'Quantity'}
+                            </label>
+                            <input
+                              id={`qty-input-${item.sku}`}
+                              type="number"
+                              min="0"
+                              max={isNoQty ? 9999 : item.quantityAvailable}
+                              value={si.quantity === 0 ? '' : si.quantity}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                handleQuantityChange(si.itemId, val);
+                              }}
+                              className="w-16 px-2 py-1 text-center font-bold text-xs font-mono bg-white border border-zinc-200 focus:outline-none focus:border-zinc-900"
+                            />
+                          </div>
+
+                          {/* Remove Button */}
+                          <button
+                            id={`btn-remove-item-${item.sku}`}
+                            type="button"
+                            onClick={() => handleRemoveItem(si.itemId)}
+                            className="p-1.5 text-zinc-400 hover:text-red-750 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all cursor-pointer mt-4"
+                            title="Remove item from manifest"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Bottom Allocation Stats Card */}
+            {selectedItems.length > 0 && (
+              <div className="mt-4 p-3 bg-zinc-50 border border-zinc-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <span className="text-[9px] uppercase font-bold text-zinc-400 block tracking-widest">Total Outbound</span>
+                  <span className="font-mono font-bold text-zinc-900">
+                    {selectedItems.reduce((sum, s) => sum + s.quantity, 0)} units
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] uppercase font-bold text-zinc-400 block tracking-widest">Rented Assets</span>
+                  <span className="font-mono font-bold text-zinc-800">
+                    {selectedItems.filter(s => !s.isComplimentary).reduce((sum, s) => sum + s.quantity, 0)} units
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] uppercase font-bold text-emerald-700 block tracking-widest flex items-center gap-1">
+                    <Gift className="h-2.5 w-2.5" />
+                    Complimentary
+                  </span>
+                  <span className="font-mono font-bold text-emerald-800">
+                    {selectedItems.filter(s => s.isComplimentary).reduce((sum, s) => sum + s.quantity, 0)} units
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[9px] uppercase font-bold text-zinc-400 block tracking-widest">Courtesy Waived</span>
+                  <span className="font-mono font-bold text-emerald-750">
+                    ₱{selectedItems.reduce((acc, si) => {
+                      if (!si.isComplimentary) return acc;
+                      const it = inventory.find(i => i.id === si.itemId);
+                      return acc + (Number(it?.rentalPrice || 0) * si.quantity);
+                    }, 0).toLocaleString()}
+                  </span>
+                </div>
               </div>
             )}
 

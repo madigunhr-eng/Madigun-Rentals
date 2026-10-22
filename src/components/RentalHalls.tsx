@@ -13,7 +13,8 @@ import {
   History,
   TimerReset,
   FileText,
-  Trash2
+  Trash2,
+  Gift
 } from 'lucide-react';
 import { InventoryItem, UserSession, TransmittalItem, Transmittal } from '../types';
 
@@ -89,7 +90,7 @@ export default function RentalHalls({
   const [endAmPm, setEndAmPm] = useState<'AM' | 'PM'>('PM');
 
   // Additional hourly items & corkage fees added to the booking
-  const [extraItems, setExtraItems] = useState<{ itemId: string; quantity: number }[]>([]);
+  const [extraItems, setExtraItems] = useState<{ itemId: string; quantity: number; isComplimentary?: boolean }[]>([]);
 
   // Extension Modal State
   const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
@@ -371,13 +372,15 @@ export default function RentalHalls({
       }
     ];
 
-    // Add extra items / corkage fees
+    // Add extra items / corkage fees / complimentary inclusions
     extraItems.forEach(ei => {
       const invItem = inventory.find(i => i.id === ei.itemId);
       if (invItem && ei.quantity > 0) {
         const isHourly = invItem.isHourlyCharged;
         const rate = Number(invItem.rentalPrice || 0);
-        const itemLabel = isHourly 
+        const itemLabel = ei.isComplimentary
+          ? `${invItem.name} (Complimentary Venue Inclusion)`
+          : isHourly 
           ? `${invItem.name} (${durationMode === 'Days' ? `${rentalDays * 24} hrs` : `${rentalHours} hrs`} @ ₱${rate}/hr)`
           : `${invItem.name} (₱${rate} fee)`;
 
@@ -386,7 +389,9 @@ export default function RentalHalls({
           name: itemLabel,
           sku: invItem.sku,
           quantity: ei.quantity,
-          returnedQuantity: 0
+          returnedQuantity: 0,
+          isComplimentary: !!ei.isComplimentary,
+          allocationType: ei.isComplimentary ? 'Complimentary' : 'Rented'
         });
       }
     });
@@ -476,6 +481,7 @@ export default function RentalHalls({
       : Math.max(1, Number(rentalHours) || 1);
 
     extraItems.forEach(ei => {
+      if (ei.isComplimentary) return;
       const item = inventory.find(i => i.id === ei.itemId);
       if (item) {
         const rate = Number(item.rentalPrice || 0);
@@ -1676,7 +1682,28 @@ export default function RentalHalls({
 
                           <div className="flex items-center gap-2">
                             {selected ? (
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExtraItems(extraItems.map(ei => ei.itemId === item.id ? { ...ei, isComplimentary: !ei.isComplimentary } : ei));
+                                  }}
+                                  className={`px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider border cursor-pointer transition-colors flex items-center gap-1 ${
+                                    selected.isComplimentary
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : 'bg-zinc-100 text-zinc-700 border-zinc-200 hover:border-zinc-400'
+                                  }`}
+                                  title="Toggle between billed fee and complimentary inclusion"
+                                >
+                                  {selected.isComplimentary ? (
+                                    <>
+                                      <Gift className="h-2.5 w-2.5" />
+                                      Comp
+                                    </>
+                                  ) : (
+                                    '₱ Fee'
+                                  )}
+                                </button>
                                 <input
                                   type="number"
                                   min="1"
@@ -1689,7 +1716,7 @@ export default function RentalHalls({
                                       setExtraItems(extraItems.map(ei => ei.itemId === item.id ? { ...ei, quantity: qty } : ei));
                                     }
                                   }}
-                                  className="w-14 px-2 py-1 border border-zinc-300 text-xs font-mono font-bold text-center"
+                                  className="w-12 px-1.5 py-1 border border-zinc-300 text-xs font-mono font-bold text-center"
                                 />
                                 <button
                                   type="button"
@@ -1700,13 +1727,24 @@ export default function RentalHalls({
                                 </button>
                               </div>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => setExtraItems([...extraItems, { itemId: item.id, quantity: 1 }])}
-                                className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 cursor-pointer"
-                              >
-                                + Add Fee / Item
-                              </button>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setExtraItems([...extraItems, { itemId: item.id, quantity: 1, isComplimentary: false }])}
+                                  className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 cursor-pointer"
+                                >
+                                  + Fee
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setExtraItems([...extraItems, { itemId: item.id, quantity: 1, isComplimentary: true }])}
+                                  className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 cursor-pointer flex items-center gap-0.5"
+                                  title="Add as complimentary venue inclusion"
+                                >
+                                  <Gift className="h-2.5 w-2.5" />
+                                  + Comp
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>

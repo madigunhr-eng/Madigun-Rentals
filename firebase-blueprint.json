@@ -41,6 +41,23 @@
         "dateCheckout": { "type": "string", "format": "date" },
         "dateCheckin": { "type": "string", "format": "date" },
         "notes": { "type": "string", "description": "Special logistics instructions" },
+        "items": {
+          "type": "array",
+          "description": "List of manifest items checked out, including rented and complimentary allocations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "itemId": { "type": "string" },
+              "name": { "type": "string" },
+              "sku": { "type": "string" },
+              "quantity": { "type": "integer" },
+              "returnedQuantity": { "type": "integer" },
+              "isComplimentary": { "type": "boolean", "description": "Whether item is allocated as a complimentary courtesy item" },
+              "allocationType": { "type": "string", "enum": ["Rented", "Complimentary"] }
+            },
+            "required": ["itemId", "name", "sku", "quantity", "returnedQuantity"]
+          }
+        },
         "status": { "type": "string", "enum": ["Pending", "Partially Returned", "Returned"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },

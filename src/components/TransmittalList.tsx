@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Calendar, User, MapPin, ClipboardCheck, ArrowLeftRight, Clock, X, CheckSquare, PlusCircle, MinusCircle, CheckCircle, MessageSquare, Printer, Trash2 } from 'lucide-react';
+import { Search, Calendar, User, MapPin, ClipboardCheck, ArrowLeftRight, Clock, X, CheckSquare, PlusCircle, MinusCircle, CheckCircle, MessageSquare, Printer, Trash2, Gift } from 'lucide-react';
 import { localStore } from '../localStore';
 import { Transmittal, InventoryItem, Custodian, TransmittalItem, UserSession } from '../types';
 import { jsPDF } from 'jspdf';
 import { getSystemLogoBase64, drawBrandedHeader, applyCenterWatermarkToAllPages } from '../utils/pdfHelper';
+import { calculateTransmittalRevenue } from '../utils';
 
 interface TransmittalListProps {
   transmittals: Transmittal[];
@@ -23,6 +24,12 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [selectedTx, setSelectedTx] = useState<Transmittal | null>(null);
+
+  // Computed financial revenue summary for the selected transmittal modal
+  const selectedTxRevSummary = useMemo(() => {
+    if (!selectedTx) return null;
+    return calculateTransmittalRevenue(selectedTx, inventory);
+  }, [selectedTx, inventory]);
 
   // Return quantities form state (itemId -> number)
   const [returnQtys, setReturnQtys] = useState<Record<string, number>>({});
@@ -377,26 +384,59 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     }
 
     const customLogo = localStorage.getItem('madigun_custom_logo');
+    const revSummary = calculateTransmittalRevenue(tx, inventory);
 
-    const itemsHtml = tx.items.map(item => `
+    const itemsHtml = revSummary.breakdown.map(({ item, calc }) => `
       <tr style="border-bottom: 1px solid #E6DFD6;">
         <td style="padding: 6px 8px; font-family: monospace; font-size: 10px; color: #4E4037;">${item.sku}</td>
-        <td style="padding: 6px 8px; font-weight: bold; font-size: 11px; color: #251D19; text-transform: uppercase;">${item.name}</td>
-        <td style="padding: 6px 8px; text-align: center; color: #251D19; font-weight: 700; font-size: 11px;">${item.quantity}</td>
-        <td style="padding: 6px 8px; text-align: center; color: #837265; font-weight: 600; font-size: 11px;">${item.returnedQuantity}</td>
-        <td style="padding: 6px 8px; text-align: right;">
+        <td style="padding: 6px 8px;">
+          <div style="font-weight: bold; font-size: 11px; color: #251D19; text-transform: uppercase;">
+            ${item.name}
+          </div>
+          <div style="font-size: 8px; color: #837265; font-family: monospace; margin-top: 1px;">
+            ${calc.days} Day${calc.days > 1 ? 's' : ''} • Qty Out: ${item.quantity} ${item.returnedQuantity > 0 ? `(${item.returnedQuantity} In)` : ''}
+          </div>
+        </td>
+        <td style="padding: 6px 8px; text-align: center;">
           <span style="
             display: inline-block;
             font-size: 8px;
             font-weight: 800;
             padding: 2px 6px;
-            border: 1px solid ${item.returnedQuantity === item.quantity ? '#A7F3D0' : '#FDE68A'};
-            background-color: ${item.returnedQuantity === item.quantity ? '#ECFDF5' : '#FEF3C7'};
-            color: ${item.returnedQuantity === item.quantity ? '#047857' : '#D97706'};
+            border: 1px solid ${calc.isComplimentary ? '#A7F3D0' : '#E6DFD6'};
+            background-color: ${calc.isComplimentary ? '#ECFDF5' : '#FAF8F6'};
+            color: ${calc.isComplimentary ? '#047857' : '#4E4037'};
             letter-spacing: 0.05em;
           ">
-            ${item.returnedQuantity === item.quantity ? 'RECONCILED' : 'RENTED'}
+            ${calc.isComplimentary ? 'COMPLIMENTARY' : 'RENTAL'}
           </span>
+        </td>
+        <td style="padding: 6px 8px; text-align: center; font-size: 9px; font-family: monospace; color: #4E4037;">
+          ${calc.rateLabel}
+        </td>
+        <td style="padding: 6px 8px; text-align: center; color: #251D19; font-weight: 700; font-size: 11px; font-family: monospace;">
+          ${item.quantity}
+          <div style="font-size: 8px; color: #837265; font-weight: normal;">${item.returnedQuantity} in</div>
+        </td>
+        <td style="padding: 6px 8px; text-align: right;">
+          ${calc.isComplimentary ? `
+            <div style="font-size: 9px; font-family: monospace; color: #837265; text-decoration: line-through;">
+              ₱${calc.grossRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style="font-size: 10px; font-weight: 800; color: #047857; font-family: monospace;">
+              ₱0.00
+            </div>
+            <div style="font-size: 7px; font-weight: 800; color: #047857; letter-spacing: 0.03em;">
+              WAIVED (-₱${calc.courtesyWaived.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+            </div>
+          ` : `
+            <div style="font-size: 11px; font-weight: 700; font-family: monospace; color: #251D19;">
+              ₱${calc.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style="font-size: 7.5px; color: #837265; font-family: monospace;">
+              ₱${calc.rate.toLocaleString()}/day
+            </div>
+          `}
         </td>
       </tr>
     `).join('');
@@ -510,6 +550,88 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
               border-bottom: 2px solid #251D19;
               padding: 6px 8px;
               text-align: left;
+            }
+            .revenue-breakdown-card {
+              border: 1.5px solid #251D19;
+              background-color: #FAF8F6;
+              margin-top: 12px;
+              margin-bottom: 14px;
+              page-break-inside: avoid;
+              position: relative;
+              z-index: 1;
+            }
+            .rev-card-header {
+              background-color: #251D19;
+              color: #FFFFFF;
+              padding: 6px 12px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              font-size: 8.5px;
+              font-weight: 800;
+              letter-spacing: 0.12em;
+              text-transform: uppercase;
+            }
+            .rev-table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            .rev-label-cell {
+              padding: 6px 12px;
+              font-size: 9.5px;
+              color: #4E4037;
+              font-weight: 600;
+              border-bottom: 1px solid #E6DFD6;
+            }
+            .rev-value-cell {
+              padding: 6px 12px;
+              text-align: right;
+              font-family: monospace;
+              font-size: 11px;
+              font-weight: 700;
+              color: #251D19;
+              border-bottom: 1px solid #E6DFD6;
+              width: 32%;
+            }
+            .rev-sub-desc {
+              font-size: 8px;
+              color: #837265;
+              display: block;
+              margin-top: 2px;
+              font-weight: normal;
+            }
+            .rev-comp-row {
+              background-color: #F0FDF4;
+            }
+            .rev-comp-row td {
+              border-bottom: 1px solid #A7F3D0;
+            }
+            .rev-comp-badge {
+              display: inline-block;
+              font-size: 7.5px;
+              font-weight: 800;
+              background-color: #047857;
+              color: #FFFFFF;
+              padding: 1px 5px;
+              letter-spacing: 0.05em;
+              text-transform: uppercase;
+            }
+            .rev-total-row {
+              background-color: #251D19;
+              color: #FFFFFF;
+            }
+            .rev-total-row td {
+              border-bottom: none;
+            }
+            .rev-comp-footer {
+              padding: 5px 12px;
+              background-color: #ECFDF5;
+              font-size: 8px;
+              color: #065F46;
+              border-top: 1px dashed #A7F3D0;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
             }
             .notes-block {
               background-color: #FAF8F6;
@@ -710,23 +832,106 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
           </div>
 
           <h3 style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; color: #837265; margin-bottom: 8px; border-bottom: 2px solid #251D19; padding-bottom: 4px;">
-            RENTAL ASSETS MANIFEST
+            RENTAL ASSETS MANIFEST & LINE-ITEM CHARGES
           </h3>
 
           <table class="manifest-table">
             <thead>
               <tr>
-                <th style="width: 25%;">Item SKU</th>
-                <th style="width: 45%;">Item Name / Particulars</th>
-                <th style="width: 15%; text-align: center;">Qty Out</th>
-                <th style="width: 15%; text-align: center;">Qty In</th>
-                <th style="width: 15%; text-align: right;">Status</th>
+                <th style="width: 17%;">Item SKU</th>
+                <th style="width: 32%;">Item Name / Particulars</th>
+                <th style="width: 14%; text-align: center;">Allocation</th>
+                <th style="width: 13%; text-align: center;">Rate / Duration</th>
+                <th style="width: 9%; text-align: center;">Out / In</th>
+                <th style="width: 15%; text-align: right;">Amount (PHP)</th>
               </tr>
             </thead>
             <tbody>
               ${itemsHtml}
             </tbody>
           </table>
+
+          <div style="display: flex; justify-content: space-between; font-size: 8.5px; font-weight: bold; color: #4E4037; background-color: #FAF8F6; border: 1px solid #E6DFD6; padding: 6px 10px; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
+            <span>Total Units Issued: ${revSummary.totalUnitsCount}</span>
+            <span>Rented Units: ${revSummary.rentedUnitsCount}</span>
+            <span style="color: #047857;">Complimentary (Courtesy): ${revSummary.complimentaryUnitsCount}</span>
+          </div>
+
+          <!-- Official Revenue Breakdown Section Minus Complimentary Waived -->
+          <div class="revenue-breakdown-card">
+            <div class="rev-card-header">
+              <span>Financial Revenue Breakdown & Billing Settlement</span>
+              <span style="font-size: 8px; font-weight: 700; color: #C3B5A6;">CURRENCY: PHP (₱)</span>
+            </div>
+
+            <table class="rev-table">
+              <tr>
+                <td class="rev-label-cell">
+                  Gross Scheduled Rental Subtotal:
+                  <span class="rev-sub-desc">
+                    Standard scheduled fees for all ${revSummary.totalUnitsCount} outbound asset units across rental duration
+                  </span>
+                </td>
+                <td class="rev-value-cell">
+                  ₱${revSummary.grossRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+
+              ${revSummary.extensionsTotal > 0 ? `
+              <tr>
+                <td class="rev-label-cell">
+                  Venue Rental Duration Surcharges / Extensions:
+                  <span class="rev-sub-desc">Authorized overtime & duration extensions recorded in logistics log</span>
+                </td>
+                <td class="rev-value-cell">
+                  + ₱${revSummary.extensionsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+              ` : ''}
+
+              ${revSummary.hasComplimentary ? `
+              <tr class="rev-comp-row">
+                <td class="rev-label-cell" style="color: #047857;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <strong>Less: Complimentary Allocation (Waived Courtesy):</strong>
+                    <span class="rev-comp-badge">WAIVER APPLIED</span>
+                  </div>
+                  <span class="rev-sub-desc" style="color: #065F46;">
+                    * Courtesy allocation of ${revSummary.complimentaryUnitsCount} complimentary unit${revSummary.complimentaryUnitsCount > 1 ? 's' : ''} (${revSummary.complimentaryItemsCount} line item${revSummary.complimentaryItemsCount > 1 ? 's' : ''}) waived at zero charge to recipient
+                  </span>
+                </td>
+                <td class="rev-value-cell" style="color: #047857; font-weight: 800;">
+                  - ₱${revSummary.complimentaryWaived.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+              ` : `
+              <tr>
+                <td class="rev-label-cell" style="color: #837265;">
+                  Less: Complimentary Concession / Waived:
+                </td>
+                <td class="rev-value-cell" style="color: #837265; font-size: 9px;">
+                  ₱0.00 (None Issued)
+                </td>
+              </tr>
+              `}
+
+              <tr class="rev-total-row">
+                <td style="padding: 9px 12px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;">
+                  Net Billable Rental Revenue:
+                </td>
+                <td style="padding: 9px 12px; text-align: right; font-family: monospace; font-size: 14px; font-weight: 800; letter-spacing: 0.05em;">
+                  ₱${revSummary.netRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </table>
+
+            ${revSummary.hasComplimentary ? `
+            <div class="rev-comp-footer">
+              <span><strong>SETTLEMENT PRIVILEGE:</strong> Complimentary assets carry zero rental liability. Recipient is billed solely for contracted rental assets and authorized venue services.</span>
+              <span style="font-weight: 800; font-family: monospace; color: #047857; letter-spacing: 0.05em;">SAVINGS: ₱${revSummary.complimentaryWaived.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            ` : ''}
+          </div>
 
           ${tx.notes ? `
             <div class="notes-block">
@@ -895,6 +1100,14 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
               <Calendar className="h-3.5 w-3.5 mr-1.5 text-zinc-400 shrink-0" />
               <span className="text-[11px] uppercase tracking-wide font-semibold text-zinc-500">Out Date: <span className="font-bold text-zinc-700 font-mono">{tx.dateCheckout}</span></span>
             </div>
+            {tx.items.some(i => i.isComplimentary) && (
+              <div className="pt-1 flex items-center">
+                <span className="inline-flex items-center gap-1 text-[9px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 uppercase tracking-wider">
+                  <Gift className="h-2.5 w-2.5" />
+                  {tx.items.filter(i => i.isComplimentary).reduce((s, i) => s + i.quantity, 0)} Complimentary Items
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1425,19 +1638,24 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
 
                   {/* Rental Items Manifest Section */}
                   <div className="space-y-3 pt-3 border-t border-zinc-200">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-900 flex items-center">
-                        <ClipboardCheck className="h-4 w-4 text-zinc-800 mr-2" />
-                        Rental Items Manifest
-                      </h3>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-900 flex items-center">
+                          <ClipboardCheck className="h-4 w-4 text-zinc-800 mr-2" />
+                          Rental Items Manifest
+                        </h3>
+                        <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                          {selectedTx.items.length} Profiles • {selectedTx.items.filter(i => !i.isComplimentary).reduce((s, i) => s + i.quantity, 0)} Rented Units • <span className="text-emerald-700 font-bold">{selectedTx.items.filter(i => i.isComplimentary).reduce((s, i) => s + i.quantity, 0)} Complimentary</span>
+                        </div>
+                      </div>
                       {!isEditingItems && selectedTx.status !== 'Returned' && currentUser?.role !== 'Managing Director' && (
                         <button
                           id="btn-edit-manifest-items"
-                          type="button; submit"
+                          type="button"
                           onClick={handleStartEditing}
                           className="px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-zinc-700 bg-white border border-zinc-300 hover:border-zinc-500 hover:text-zinc-950 transition-colors cursor-pointer"
                         >
-                          Edit Items
+                          Edit Manifest
                         </button>
                       )}
                     </div>
@@ -1454,10 +1672,18 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                             const minAllowed = Math.max(1, item.returnedQuantity);
 
                             return (
-                              <div key={item.itemId || idx} className="p-3 bg-zinc-50 border border-zinc-250 flex flex-col gap-2.5">
+                              <div key={item.itemId || idx} className={`p-3 border flex flex-col gap-2.5 transition-colors ${item.isComplimentary ? 'bg-emerald-50/50 border-emerald-300' : 'bg-zinc-50 border-zinc-250'}`}>
                                 <div className="flex justify-between items-start">
                                   <div className="min-w-0 flex-1">
-                                    <h4 className="font-bold text-zinc-900 text-xs uppercase tracking-tight truncate">{item.name}</h4>
+                                    <div className="flex items-center gap-2">
+                                      <h4 className="font-bold text-zinc-900 text-xs uppercase tracking-tight truncate">{item.name}</h4>
+                                      {item.isComplimentary && (
+                                        <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 uppercase shrink-0 flex items-center gap-1">
+                                          <Gift className="h-2.5 w-2.5" />
+                                          Comp
+                                        </span>
+                                      )}
+                                    </div>
                                     <p className="text-[10px] text-zinc-400 font-mono mt-0.5 uppercase tracking-wide">
                                       {item.sku} • Warehouse Avail: <span className="font-bold text-zinc-700">{availableStock}</span>
                                     </p>
@@ -1476,49 +1702,80 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                   </button>
                                 </div>
 
-                                <div className="flex justify-between items-center bg-white border border-zinc-200 p-2">
-                                  <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                                    Returned Count: <span className="text-emerald-600 font-bold font-mono">{item.returnedQuantity}</span>
-                                  </div>
-                                  
+                                <div className="flex flex-wrap justify-between items-center bg-white border border-zinc-200 p-2 gap-2">
+                                  {/* Allocation Toggle Button */}
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Manifest Qty</span>
-                                    <div className="flex items-center border border-zinc-200 bg-white overflow-hidden">
-                                      <button
-                                        id={`btn-edit-qty-dec-${item.sku}`}
-                                        type="button"
-                                        onClick={() => {
-                                          const newQty = Math.max(minAllowed, item.quantity - 1);
-                                          setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: newQty } : ei));
-                                        }}
-                                        className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
-                                      >
-                                        <MinusCircle className="h-3.5 w-3.5" />
-                                      </button>
-                                      <input
-                                        id={`input-edit-qty-${item.sku}`}
-                                        type="number"
-                                        min="0"
-                                        max={maxAllowed}
-                                        value={item.quantity === 0 ? '' : item.quantity}
-                                        onChange={(e) => {
-                                          const val = e.target.value === '' ? 0 : Number(e.target.value);
-                                          const validQty = Math.max(0, Math.min(maxAllowed, val));
-                                          setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: validQty } : ei));
-                                        }}
-                                        className="w-10 text-center font-bold text-xs font-mono focus:outline-none py-1"
-                                      />
-                                      <button
-                                        id={`btn-edit-qty-inc-${item.sku}`}
-                                        type="button"
-                                        onClick={() => {
-                                          const newQty = Math.min(maxAllowed, item.quantity + 1);
-                                          setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: newQty } : ei));
-                                        }}
-                                        className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
-                                      >
-                                        <PlusCircle className="h-3.5 w-3.5" />
-                                      </button>
+                                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Type:</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? {
+                                          ...ei,
+                                          isComplimentary: !ei.isComplimentary,
+                                          allocationType: !ei.isComplimentary ? 'Complimentary' : 'Rented'
+                                        } : ei));
+                                      }}
+                                      className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border cursor-pointer transition-colors flex items-center gap-1 ${
+                                        item.isComplimentary
+                                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                          : 'bg-zinc-100 text-zinc-700 border-zinc-200 hover:border-zinc-400'
+                                      }`}
+                                    >
+                                      {item.isComplimentary ? (
+                                        <>
+                                          <Gift className="h-2.5 w-2.5" />
+                                          Complimentary
+                                        </>
+                                      ) : (
+                                        '₱ Rented'
+                                      )}
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-3">
+                                    <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                                      Returned: <span className="text-emerald-600 font-bold font-mono">{item.returnedQuantity}</span>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Qty</span>
+                                      <div className="flex items-center border border-zinc-200 bg-white overflow-hidden">
+                                        <button
+                                          id={`btn-edit-qty-dec-${item.sku}`}
+                                          type="button"
+                                          onClick={() => {
+                                            const newQty = Math.max(minAllowed, item.quantity - 1);
+                                            setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: newQty } : ei));
+                                          }}
+                                          className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
+                                        >
+                                          <MinusCircle className="h-3.5 w-3.5" />
+                                        </button>
+                                        <input
+                                          id={`input-edit-qty-${item.sku}`}
+                                          type="number"
+                                          min="0"
+                                          max={maxAllowed}
+                                          value={item.quantity === 0 ? '' : item.quantity}
+                                          onChange={(e) => {
+                                            const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                            const validQty = Math.max(0, Math.min(maxAllowed, val));
+                                            setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: validQty } : ei));
+                                          }}
+                                          className="w-10 text-center font-bold text-xs font-mono focus:outline-none py-1"
+                                        />
+                                        <button
+                                          id={`btn-edit-qty-inc-${item.sku}`}
+                                          type="button"
+                                          onClick={() => {
+                                            const newQty = Math.min(maxAllowed, item.quantity + 1);
+                                            setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: newQty } : ei));
+                                          }}
+                                          className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
+                                        >
+                                          <PlusCircle className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -1587,31 +1844,57 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                       return isAvailable && isNotStagnant && isNotAlreadyAdded && matchesQuery;
                                     })
                                     .map((item) => (
-                                      <button
-                                        id={`btn-add-searched-item-${item.sku}`}
+                                      <div
                                         key={item.id}
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingItems([...editingItems, {
-                                            itemId: item.id,
-                                            name: item.name,
-                                            sku: item.sku,
-                                            quantity: 1,
-                                            returnedQuantity: 0
-                                          }]);
-                                          setEditItemSearchQuery('');
-                                          setShowEditItemDropdown(false);
-                                        }}
-                                        className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 transition-colors flex justify-between items-center cursor-pointer text-xs"
+                                        className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 transition-colors flex justify-between items-center text-xs"
                                       >
-                                        <div>
-                                          <span className="font-bold text-zinc-900 block uppercase">{item.name}</span>
-                                          <span className="text-[10px] text-zinc-400 font-mono uppercase block">{item.sku}</span>
+                                        <div className="min-w-0 flex-1 pr-2">
+                                          <span className="font-bold text-zinc-900 block uppercase truncate">{item.name}</span>
+                                          <span className="text-[10px] text-zinc-400 font-mono uppercase block">{item.sku} • {item.quantityAvailable} Avail</span>
                                         </div>
-                                        <span className="text-[9px] bg-zinc-100 text-zinc-700 font-bold px-1.5 py-0.5 font-mono uppercase">
-                                          {item.quantityAvailable} Avail
-                                        </span>
-                                      </button>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <button
+                                            id={`btn-add-searched-item-${item.sku}`}
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingItems([...editingItems, {
+                                                itemId: item.id,
+                                                name: item.name,
+                                                sku: item.sku,
+                                                quantity: 1,
+                                                returnedQuantity: 0,
+                                                isComplimentary: false,
+                                                allocationType: 'Rented'
+                                              }]);
+                                              setEditItemSearchQuery('');
+                                              setShowEditItemDropdown(false);
+                                            }}
+                                            className="px-2 py-1 bg-zinc-900 text-white font-bold text-[9px] uppercase tracking-wider hover:bg-zinc-800 cursor-pointer"
+                                          >
+                                            + Rented
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingItems([...editingItems, {
+                                                itemId: item.id,
+                                                name: item.name,
+                                                sku: item.sku,
+                                                quantity: 1,
+                                                returnedQuantity: 0,
+                                                isComplimentary: true,
+                                                allocationType: 'Complimentary'
+                                              }]);
+                                              setEditItemSearchQuery('');
+                                              setShowEditItemDropdown(false);
+                                            }}
+                                            className="px-2 py-1 bg-emerald-700 text-white font-bold text-[9px] uppercase tracking-wider hover:bg-emerald-800 flex items-center gap-1 cursor-pointer"
+                                          >
+                                            <Gift className="h-2.5 w-2.5" />
+                                            + Comp
+                                          </button>
+                                        </div>
+                                      </div>
                                     ))}
                                   {inventory.filter(item => {
                                     const isAvailable = item.quantityAvailable > 0;
@@ -1653,14 +1936,44 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                       </div>
                     ) : (
                       <div className="bg-zinc-50 border border-zinc-200 divide-y divide-zinc-200/60">
-                        {selectedTx.items.map((item) => (
-                          <div key={item.itemId} className="p-3 flex items-center justify-between text-xs">
-                            <div>
-                              <span className="font-bold text-zinc-850 uppercase block">{item.name}</span>
-                              <span className="text-[10px] text-zinc-400 font-mono block mt-0.5">{item.sku}</span>
+                        {(selectedTxRevSummary?.breakdown || []).map(({ item, calc }) => (
+                          <div key={item.itemId} className={`p-3 flex items-center justify-between text-xs ${calc.isComplimentary ? 'bg-emerald-50/40' : ''}`}>
+                            <div className="min-w-0 flex-1 pr-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-zinc-850 uppercase block truncate">{item.name}</span>
+                                {calc.isComplimentary ? (
+                                  <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 uppercase shrink-0 flex items-center gap-1">
+                                    <Gift className="h-2.5 w-2.5" />
+                                    Complimentary
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-bold text-zinc-600 bg-zinc-100 border border-zinc-200 px-1.5 py-0.2 uppercase shrink-0">
+                                    Rented
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-2 mt-0.5">
+                                <span>{item.sku}</span>
+                                <span>•</span>
+                                <span>{calc.rateLabel}</span>
+                              </div>
                             </div>
-                            <div className="text-right font-mono text-[11px] font-bold text-zinc-700">
-                              Qty: {item.quantity} <span className="text-zinc-300 mx-1">|</span> Rec: {item.returnedQuantity}
+                            <div className="text-right shrink-0">
+                              <div className="font-mono text-[11px] font-bold text-zinc-700">
+                                Qty: {item.quantity} <span className="text-zinc-300 mx-1">|</span> Rec: {item.returnedQuantity}
+                              </div>
+                              <div className="mt-0.5">
+                                {calc.isComplimentary ? (
+                                  <div className="flex items-center justify-end gap-1 font-mono text-[10px]">
+                                    <span className="line-through text-zinc-400">₱{calc.grossRevenue.toLocaleString()}</span>
+                                    <span className="font-black text-emerald-700">₱0 (Waived)</span>
+                                  </div>
+                                ) : (
+                                  <span className="font-mono font-bold text-zinc-900 text-[11px]">
+                                    ₱{calc.revenue.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1670,6 +1983,80 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                       </div>
                     )}
                   </div>
+
+                  {/* Financial Revenue Breakdown & Billing Settlement Section */}
+                  {selectedTxRevSummary && (
+                    <div className="pt-3.5 border-t border-zinc-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest block">
+                          Financial Revenue Breakdown & Settlement
+                        </span>
+                        <span className="text-[9px] font-mono font-bold text-zinc-400 uppercase">
+                          PHP (₱)
+                        </span>
+                      </div>
+                      <div className="bg-zinc-50 border border-zinc-200 divide-y divide-zinc-200/70 text-xs">
+                        <div className="p-2.5 px-3.5 flex justify-between items-center text-zinc-700">
+                          <div>
+                            <span className="font-semibold text-[11px] uppercase tracking-wide block">Gross Scheduled Rental Subtotal:</span>
+                            <span className="text-[9px] text-zinc-400">Standard scheduled fees for {selectedTxRevSummary.totalUnitsCount} outbound units</span>
+                          </div>
+                          <span className="font-mono font-bold text-zinc-900 text-xs">
+                            ₱{selectedTxRevSummary.grossRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        {selectedTxRevSummary.extensionsTotal > 0 && (
+                          <div className="p-2.5 px-3.5 flex justify-between items-center text-amber-900 bg-amber-50/50">
+                            <div>
+                              <span className="font-semibold text-[11px] uppercase tracking-wide block">Duration Extension Surcharges:</span>
+                              <span className="text-[9px] text-amber-700/80">Authorized venue overtime logged in transmittal</span>
+                            </div>
+                            <span className="font-mono font-bold text-amber-900 text-xs">
+                              + ₱{selectedTxRevSummary.extensionsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+
+                        {selectedTxRevSummary.hasComplimentary ? (
+                          <div className="p-2.5 px-3.5 flex justify-between items-center bg-emerald-50/80 text-emerald-900">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <Gift className="h-3 w-3 text-emerald-700" />
+                                <span className="font-bold text-[11px] uppercase tracking-wide text-emerald-900">
+                                  Less: Complimentary Allocation (Waived):
+                                </span>
+                                <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-200 text-emerald-900 px-1.5 py-0.2 border border-emerald-300">
+                                  WAIVED
+                                </span>
+                              </div>
+                              <span className="text-[9px] text-emerald-750 block mt-0.5">
+                                {selectedTxRevSummary.complimentaryUnitsCount} courtesy units granted free of charge
+                              </span>
+                            </div>
+                            <span className="font-mono font-black text-emerald-800 text-xs">
+                              - ₱{selectedTxRevSummary.complimentaryWaived.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="p-2 px-3.5 flex justify-between items-center text-zinc-400 text-[10px]">
+                            <span>Less: Complimentary Waived:</span>
+                            <span className="font-mono">₱0.00 (None Issued)</span>
+                          </div>
+                        )}
+
+                        <div className="p-3 px-3.5 flex justify-between items-center bg-zinc-900 text-white font-bold">
+                          <div>
+                            <span className="text-[11px] font-black uppercase tracking-widest block text-white">Net Billable Rental Revenue:</span>
+                            <span className="text-[9px] text-zinc-400 font-normal">Gross scheduled minus courtesy concessions</span>
+                          </div>
+                          <span className="font-mono text-sm font-black tracking-tight text-white">
+                            ₱{selectedTxRevSummary.netRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Rental Terms & Operational Conditions Section */}
                   <div className="pt-3.5 border-t border-zinc-200">
@@ -1849,7 +2236,19 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                           return (
                             <div key={item.itemId} className="p-4 bg-zinc-50 border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div className="min-w-0 flex-1">
-                                <h4 className="font-bold text-zinc-900 text-xs uppercase tracking-tight truncate">{item.name}</h4>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-zinc-900 text-xs uppercase tracking-tight truncate">{item.name}</h4>
+                                  {item.isComplimentary ? (
+                                    <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 uppercase shrink-0 flex items-center gap-1">
+                                      <Gift className="h-2.5 w-2.5" />
+                                      Complimentary
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold text-zinc-600 bg-zinc-100 border border-zinc-200 px-1.5 py-0.2 uppercase shrink-0">
+                                      Rented
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[10px] text-zinc-400 font-mono mt-0.5 uppercase tracking-wide">
                                   {item.sku} • Out: <span className="font-bold text-zinc-700">{item.quantity}</span> • Reconciled: <span className="font-bold text-emerald-600">{item.returnedQuantity}</span>
                                 </p>
