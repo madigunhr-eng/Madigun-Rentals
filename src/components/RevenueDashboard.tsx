@@ -20,8 +20,11 @@ import {
   Layers,
   Sparkles,
   Info,
-  Gift
+  Gift,
+  Printer,
+  AlertCircle
 } from 'lucide-react';
+import { generateRevenueReportPDF, generateTopItemsRentedPDF } from '../utils/pdfHelper';
 import { 
   BarChart, 
   Bar, 
@@ -49,6 +52,8 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
   const [selectedStreamFilter, setSelectedStreamFilter] = useState<'ALL' | 'ITEMS' | 'HALLS'>('ALL');
   const [topAssetsCategory, setTopAssetsCategory] = useState<'ALL' | 'ITEMS' | 'HALLS'>('ALL');
+  const [reportError, setReportError] = useState('');
+  const [isGeneratingReport, setIsGeneratingReport] = useState<'revenue' | 'top-items' | null>(null);
 
   // Quick Date Filters Helper
   const applyQuickDateFilter = (type: 'this-month' | 'last-30' | 'this-year' | 'all') => {
@@ -307,16 +312,22 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
     });
   }, [transmittals, inventory]);
 
-  // Apply filters on transmittals
-  const filteredTransmittals = useMemo(() => {
+  // Date-only filtered transmittals (used by date-filtered Revenue & Top Items Rented reports)
+  const dateFilteredTransmittals = useMemo(() => {
     return transmittalsWithRevenue.filter(tx => {
+      const txDate = (tx.dateCheckout || '').split(' ')[0].split('T')[0];
+      if (startDate && txDate < startDate) return false;
+      if (endDate && txDate > endDate) return false;
+      return true;
+    });
+  }, [transmittalsWithRevenue, startDate, endDate]);
+
+  // Apply all dashboard filters on transmittals
+  const filteredTransmittals = useMemo(() => {
+    return dateFilteredTransmittals.filter(tx => {
       // Stream Filter
       if (selectedStreamFilter === 'ITEMS' && tx.itemsRevenue <= 0) return false;
       if (selectedStreamFilter === 'HALLS' && tx.hallsRevenue <= 0) return false;
-
-      // Date Range Filter
-      if (startDate && tx.dateCheckout < startDate) return false;
-      if (endDate && tx.dateCheckout > endDate) return false;
 
       // Status Filter
       if (selectedStatusFilter !== 'ALL' && tx.status.toUpperCase() !== selectedStatusFilter) return false;
@@ -334,7 +345,111 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
 
       return true;
     });
-  }, [transmittalsWithRevenue, startDate, endDate, searchQuery, selectedStatusFilter, selectedStreamFilter]);
+  }, [dateFilteredTransmittals, searchQuery, selectedStatusFilter, selectedStreamFilter]);
+
+  const handleGenerateRevenueReport = async () => {
+    setReportError('');
+    if (startDate && endDate && startDate > endDate) {
+      setReportError('From Date cannot be later than To Date.');
+      return;
+    }
+    if (dateFilteredTransmittals.length === 0) {
+      setReportError('No rental records found for the selected date range.');
+      return;
+    }
+
+    try {
+      setIsGeneratingReport('revenue');
+      const contracts = dateFilteredTransmittals.map(tx => ({
+        transmittalNo: tx.transmittalNo,
+        dateCheckout: tx.dateCheckout,
+        rentee: tx.rentee,
+        status: tx.status,
+        hallsRevenue: tx.hallsRevenue,
+        itemsRevenue: tx.itemsRevenue,
+        totalRevenue: tx.totalRevenue,
+        complimentaryWaived: tx.itemsDetail.reduce(
+          (sum: number, it: any) => sum + (it.isComplimentary ? (it.courtesyValue || 0) : 0),
+          0
+        )
+      }));
+      await generateRevenueReportPDF({ startDate, endDate, contracts });
+    } catch (err: any) {
+      setReportError(err.message || 'Failed to generate revenue report.');
+    } finally {
+      setIsGeneratingReport(null);
+    }
+  };
+
+  const handleGenerateTopItemsReport = async () => {
+    setReportError('');
+    if (startDate && endDate && startDate > endDate) {
+      setReportError('From Date cannot be later than To Date.');
+      return;
+    }
+
+    const itemMap: Record<string, {
+      name: string;
+      sku: string;
+      rentedQty: number;
+      complimentaryQty: number;
+      bookingIds: Set<string>;
+      revenue: number;
+    }> = {};
+
+    dateFilteredTransmittals.forEach(tx => {
+      tx.itemsDetail.forEach((item: any) => {
+        if (item.isHall) return;
+
+        const invItem = inventory.find(i => i.id === item.itemId || (item.sku && i.sku === item.sku));
+        const key = item.itemId || item.sku || item.name;
+        if (!itemMap[key]) {
+          itemMap[key] = {
+            name: invItem?.name || item.name,
+            sku: invItem?.sku || item.sku || '-',
+            rentedQty: 0,
+            complimentaryQty: 0,
+            bookingIds: new Set<string>(),
+            revenue: 0
+          };
+        }
+
+        const qty = Number(item.quantity || 0);
+        if (item.isComplimentary) {
+          itemMap[key].complimentaryQty += qty;
+        } else {
+          itemMap[key].rentedQty += qty;
+          itemMap[key].revenue += Number(item.revenue || 0);
+        }
+        itemMap[key].bookingIds.add(tx.id || tx.transmittalNo);
+      });
+    });
+
+    const items = Object.values(itemMap)
+      .filter(entry => entry.rentedQty > 0)
+      .map(entry => ({
+        name: entry.name,
+        sku: entry.sku,
+        rentedQty: entry.rentedQty,
+        complimentaryQty: entry.complimentaryQty,
+        bookings: entry.bookingIds.size,
+        revenue: entry.revenue
+      }));
+
+    if (items.length === 0) {
+      setReportError('No rented items found for the selected date range.');
+      return;
+    }
+
+    try {
+      setIsGeneratingReport('top-items');
+      await generateTopItemsRentedPDF({ startDate, endDate, items });
+    } catch (err: any) {
+      setReportError(err.message || 'Failed to generate top items rented report.');
+    } finally {
+      setIsGeneratingReport(null);
+    }
+  };
 
   // Summary Metrics including Rental Halls & Rental Items revenue
   const metrics = useMemo(() => {
@@ -621,6 +736,61 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
             <option value="PENDING">Pending Approval</option>
             <option value="PARTIALLY RETURNED">Partially Returned</option>
           </select>
+        </div>
+      </div>
+
+      {/* Date-Filtered Simple PDF Reports Bar */}
+      <div className="bg-white border border-zinc-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <FileText className="h-3.5 w-3.5 text-zinc-800" />
+            <span className="text-[11px] font-black text-zinc-900 uppercase tracking-widest">
+              Date-Filtered Reports (PDF)
+            </span>
+          </div>
+          <p className="text-[10px] font-mono text-zinc-500 uppercase">
+            Date Scope:{' '}
+            <span className="font-bold text-zinc-800">
+              {startDate && endDate
+                ? `${startDate} to ${endDate}`
+                : startDate
+                ? `From ${startDate}`
+                : endDate
+                ? `Up to ${endDate}`
+                : 'All Dates'}
+            </span>
+            {' '}• {dateFilteredTransmittals.length} contract{dateFilteredTransmittals.length !== 1 ? 's' : ''}
+          </p>
+          {reportError && (
+            <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider flex items-center gap-1 pt-1">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              {reportError}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            id="btn-generate-revenue-report"
+            type="button"
+            onClick={handleGenerateRevenueReport}
+            disabled={isGeneratingReport !== null}
+            className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest cursor-pointer transition-colors inline-flex items-center gap-2 border border-zinc-900"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            {isGeneratingReport === 'revenue' ? 'Generating...' : 'Generate Revenue Report'}
+          </button>
+
+          <button
+            id="btn-generate-top-items-report"
+            type="button"
+            onClick={handleGenerateTopItemsReport}
+            disabled={isGeneratingReport !== null}
+            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest cursor-pointer transition-colors inline-flex items-center gap-2 border border-emerald-700"
+          >
+            <Package className="h-3.5 w-3.5" />
+            {isGeneratingReport === 'top-items' ? 'Generating...' : 'Top Items Rented'}
+          </button>
         </div>
       </div>
 

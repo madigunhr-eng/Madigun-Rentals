@@ -828,3 +828,394 @@ export async function generateOwnedPropertiesSummaryPDF(
   const dateStamp = new Date().toISOString().split('T')[0];
   doc.save(`Madigun_Owned_Rental_Properties_Summary_${dateStamp}.pdf`);
 }
+
+/**
+ * Generates a simple, direct-to-the-point Revenue Report PDF filtered by date range.
+ */
+export async function generateRevenueReportPDF(params: {
+  startDate: string;
+  endDate: string;
+  contracts: Array<{
+    transmittalNo: string;
+    dateCheckout: string;
+    rentee: string;
+    status: string;
+    hallsRevenue: number;
+    itemsRevenue: number;
+    totalRevenue: number;
+    complimentaryWaived?: number;
+  }>;
+}) {
+  const { startDate, endDate, contracts } = params;
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const logoBase64 = await getSystemLogoBase64();
+  const primaryColor = [24, 24, 27];
+  const secondaryColor = [113, 113, 122];
+
+  const sorted = [...contracts].sort((a, b) => (a.dateCheckout || '').localeCompare(b.dateCheckout || ''));
+
+  const totalHalls = sorted.reduce((sum, c) => sum + (c.hallsRevenue || 0), 0);
+  const totalItems = sorted.reduce((sum, c) => sum + (c.itemsRevenue || 0), 0);
+  const totalNet = sorted.reduce((sum, c) => sum + (c.totalRevenue || 0), 0);
+  const totalWaived = sorted.reduce((sum, c) => sum + (c.complimentaryWaived || 0), 0);
+
+  const periodLabel = startDate && endDate
+    ? `${startDate} TO ${endDate}`
+    : startDate
+    ? `FROM ${startDate}`
+    : endDate
+    ? `UP TO ${endDate}`
+    : 'ALL DATES';
+
+  let pageNum = 1;
+  drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+
+  let y = 34;
+
+  // Title
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(24, 24, 27);
+  doc.text('RENTAL REVENUE REPORT', 15, y);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(113, 113, 122);
+  doc.text(`PERIOD: ${periodLabel}   |   CONTRACTS: ${sorted.length}`, 15, y + 5);
+  y += 10;
+
+  // Compact 4-column Summary Box
+  const boxW = 43.5;
+  const gap = 2;
+  const summaryBoxes = [
+    { label: 'NET REVENUE', value: `PHP ${totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, highlight: true },
+    { label: 'RENTAL HALLS', value: `PHP ${totalHalls.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, highlight: false },
+    { label: 'RENTAL ITEMS', value: `PHP ${totalItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, highlight: false },
+    { label: 'COMP. WAIVED', value: `PHP ${totalWaived.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, highlight: false }
+  ];
+
+  summaryBoxes.forEach((box, idx) => {
+    const x = 15 + idx * (boxW + gap);
+    if (box.highlight) {
+      doc.setFillColor(24, 24, 27);
+      doc.rect(x, y, boxW, 13, 'F');
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(212, 212, 216);
+      doc.text(box.label, x + 3, y + 4.5);
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(box.value, x + 3, y + 10);
+    } else {
+      doc.setFillColor(250, 250, 250);
+      doc.setDrawColor(228, 228, 231);
+      doc.rect(x, y, boxW, 13, 'FD');
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(113, 113, 122);
+      doc.text(box.label, x + 3, y + 4.5);
+      doc.setFontSize(8.5);
+      doc.setTextColor(24, 24, 27);
+      doc.text(box.value, x + 3, y + 10);
+    }
+  });
+
+  y += 18;
+
+  const drawTableHeader = (currentY: number) => {
+    doc.setFillColor(39, 39, 42);
+    doc.rect(15, currentY, 180, 7, 'F');
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text('DATE', 17, currentY + 4.8);
+    doc.text('AR NO.', 40, currentY + 4.8);
+    doc.text('RENTEE', 72, currentY + 4.8);
+    doc.text('HALLS (PHP)', 135, currentY + 4.8, { align: 'right' });
+    doc.text('ITEMS (PHP)', 164, currentY + 4.8, { align: 'right' });
+    doc.text('TOTAL (PHP)', 193, currentY + 4.8, { align: 'right' });
+  };
+
+  drawTableHeader(y);
+  y += 7;
+
+  sorted.forEach((c, idx) => {
+    if (y > 266) {
+      doc.addPage();
+      pageNum++;
+      drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+      y = 33;
+      drawTableHeader(y);
+      y += 7;
+    }
+
+    if (idx % 2 === 1) {
+      doc.setFillColor(250, 250, 250);
+      doc.rect(15, y, 180, 6.2, 'F');
+    }
+
+    const dateOnly = (c.dateCheckout || '-').split(' ')[0].split('T')[0];
+
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(7.2);
+    doc.setTextColor(82, 82, 91);
+    doc.text(dateOnly, 17, y + 4.3);
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(24, 24, 27);
+    doc.text(doc.splitTextToSize(c.transmittalNo || '-', 30)[0], 40, y + 4.3);
+
+    doc.setFont('Helvetica', 'normal');
+    doc.text(doc.splitTextToSize((c.rentee || '-').toUpperCase(), 42)[0], 72, y + 4.3);
+
+    doc.setTextColor(82, 82, 91);
+    doc.text(c.hallsRevenue > 0 ? c.hallsRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-', 135, y + 4.3, { align: 'right' });
+    doc.text(c.itemsRevenue > 0 ? c.itemsRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-', 164, y + 4.3, { align: 'right' });
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(24, 24, 27);
+    doc.text(c.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 193, y + 4.3, { align: 'right' });
+
+    doc.setDrawColor(244, 244, 245);
+    doc.line(15, y + 6.2, 195, y + 6.2);
+    y += 6.2;
+  });
+
+  // Grand Total Row
+  if (y > 265) {
+    doc.addPage();
+    pageNum++;
+    drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+    y = 33;
+  }
+
+  doc.setFillColor(244, 244, 245);
+  doc.rect(15, y, 180, 8, 'F');
+  doc.setDrawColor(161, 161, 170);
+  doc.line(15, y, 195, y);
+  doc.line(15, y + 8, 195, y + 8);
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(7.8);
+  doc.setTextColor(24, 24, 27);
+  doc.text(`TOTAL (${sorted.length} CONTRACTS)`, 17, y + 5.3);
+  doc.text(totalHalls.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 135, y + 5.3, { align: 'right' });
+  doc.text(totalItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 164, y + 5.3, { align: 'right' });
+  doc.text(`PHP ${totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 193, y + 5.3, { align: 'right' });
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(113, 113, 122);
+    doc.text('Madigun Hotel & Events • Rental Revenue Report', 15, 288);
+    doc.text(`Page ${i} of ${totalPages}`, 195, 288, { align: 'right' });
+  }
+
+  applyCenterWatermarkToAllPages(doc, logoBase64);
+
+  const rangeSlug = `${startDate || 'all'}_to_${endDate || 'all'}`;
+  doc.save(`madigun_revenue_report_${rangeSlug}.pdf`);
+}
+
+/**
+ * Generates a simple, direct-to-the-point Top Items Rented Report PDF filtered by date range.
+ */
+export async function generateTopItemsRentedPDF(params: {
+  startDate: string;
+  endDate: string;
+  items: Array<{
+    name: string;
+    sku: string;
+    rentedQty: number;
+    complimentaryQty: number;
+    bookings: number;
+    revenue: number;
+  }>;
+}) {
+  const { startDate, endDate, items } = params;
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const logoBase64 = await getSystemLogoBase64();
+  const primaryColor = [24, 24, 27];
+  const secondaryColor = [113, 113, 122];
+
+  const sorted = [...items].sort((a, b) => b.rentedQty - a.rentedQty || b.revenue - a.revenue);
+  const totalUnitsRented = sorted.reduce((sum, i) => sum + i.rentedQty, 0);
+  const totalCompUnits = sorted.reduce((sum, i) => sum + i.complimentaryQty, 0);
+  const totalItemRevenue = sorted.reduce((sum, i) => sum + i.revenue, 0);
+
+  const periodLabel = startDate && endDate
+    ? `${startDate} TO ${endDate}`
+    : startDate
+    ? `FROM ${startDate}`
+    : endDate
+    ? `UP TO ${endDate}`
+    : 'ALL DATES';
+
+  let pageNum = 1;
+  drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+
+  let y = 34;
+
+  // Title
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(24, 24, 27);
+  doc.text('TOP ITEMS RENTED REPORT', 15, y);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(113, 113, 122);
+  doc.text(`PERIOD: ${periodLabel}   |   UNIQUE ITEMS: ${sorted.length}`, 15, y + 5);
+  y += 10;
+
+  // Compact 3-column Summary Strip
+  const boxW = 58.6;
+  const gap = 2;
+  const boxes = [
+    { label: 'TOTAL UNITS RENTED', value: `${totalUnitsRented.toLocaleString()} units`, highlight: true },
+    { label: 'COMPLIMENTARY UNITS', value: `${totalCompUnits.toLocaleString()} units`, highlight: false },
+    { label: 'TOTAL ITEMS REVENUE', value: `PHP ${totalItemRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, highlight: false }
+  ];
+
+  boxes.forEach((box, idx) => {
+    const x = 15 + idx * (boxW + gap);
+    if (box.highlight) {
+      doc.setFillColor(24, 24, 27);
+      doc.rect(x, y, boxW, 13, 'F');
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(212, 212, 216);
+      doc.text(box.label, x + 3, y + 4.5);
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text(box.value, x + 3, y + 10);
+    } else {
+      doc.setFillColor(250, 250, 250);
+      doc.setDrawColor(228, 228, 231);
+      doc.rect(x, y, boxW, 13, 'FD');
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(113, 113, 122);
+      doc.text(box.label, x + 3, y + 4.5);
+      doc.setFontSize(9);
+      doc.setTextColor(24, 24, 27);
+      doc.text(box.value, x + 3, y + 10);
+    }
+  });
+
+  y += 18;
+
+  const drawTableHeader = (currentY: number) => {
+    doc.setFillColor(39, 39, 42);
+    doc.rect(15, currentY, 180, 7, 'F');
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text('#', 18, currentY + 4.8);
+    doc.text('SKU', 27, currentY + 4.8);
+    doc.text('ITEM NAME', 55, currentY + 4.8);
+    doc.text('RENTED QTY', 132, currentY + 4.8, { align: 'right' });
+    doc.text('COMP QTY', 152, currentY + 4.8, { align: 'right' });
+    doc.text('BOOKINGS', 170, currentY + 4.8, { align: 'right' });
+    doc.text('REVENUE (PHP)', 193, currentY + 4.8, { align: 'right' });
+  };
+
+  drawTableHeader(y);
+  y += 7;
+
+  sorted.forEach((item, idx) => {
+    if (y > 266) {
+      doc.addPage();
+      pageNum++;
+      drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+      y = 33;
+      drawTableHeader(y);
+      y += 7;
+    }
+
+    if (idx % 2 === 1) {
+      doc.setFillColor(250, 250, 250);
+      doc.rect(15, y, 180, 6.2, 'F');
+    }
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(7.2);
+    doc.setTextColor(113, 113, 122);
+    doc.text(`${idx + 1}`, 18, y + 4.3);
+
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(82, 82, 91);
+    doc.text(doc.splitTextToSize(item.sku || '-', 25)[0], 27, y + 4.3);
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(24, 24, 27);
+    doc.text(doc.splitTextToSize((item.name || '-').toUpperCase(), 55)[0], 55, y + 4.3);
+
+    doc.text(item.rentedQty.toLocaleString(), 132, y + 4.3, { align: 'right' });
+
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(item.complimentaryQty > 0 ? 4 : 113, item.complimentaryQty > 0 ? 120 : 113, item.complimentaryQty > 0 ? 87 : 122);
+    doc.text(item.complimentaryQty > 0 ? item.complimentaryQty.toLocaleString() : '-', 152, y + 4.3, { align: 'right' });
+
+    doc.setTextColor(82, 82, 91);
+    doc.text(item.bookings.toString(), 170, y + 4.3, { align: 'right' });
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(24, 24, 27);
+    doc.text(item.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 193, y + 4.3, { align: 'right' });
+
+    doc.setDrawColor(244, 244, 245);
+    doc.line(15, y + 6.2, 195, y + 6.2);
+    y += 6.2;
+  });
+
+  // Grand Total Row
+  if (y > 265) {
+    doc.addPage();
+    pageNum++;
+    drawBrandedHeader(doc, logoBase64, primaryColor, secondaryColor, pageNum);
+    y = 33;
+  }
+
+  doc.setFillColor(244, 244, 245);
+  doc.rect(15, y, 180, 8, 'F');
+  doc.setDrawColor(161, 161, 170);
+  doc.line(15, y, 195, y);
+  doc.line(15, y + 8, 195, y + 8);
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(7.8);
+  doc.setTextColor(24, 24, 27);
+  doc.text(`TOTAL (${sorted.length} ITEMS)`, 17, y + 5.3);
+  doc.text(totalUnitsRented.toLocaleString(), 132, y + 5.3, { align: 'right' });
+  doc.text(totalCompUnits > 0 ? totalCompUnits.toLocaleString() : '-', 152, y + 5.3, { align: 'right' });
+  doc.text(`PHP ${totalItemRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 193, y + 5.3, { align: 'right' });
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(113, 113, 122);
+    doc.text('Madigun Hotel & Events • Top Items Rented Report', 15, 288);
+    doc.text(`Page ${i} of ${totalPages}`, 195, 288, { align: 'right' });
+  }
+
+  applyCenterWatermarkToAllPages(doc, logoBase64);
+
+  const rangeSlug = `${startDate || 'all'}_to_${endDate || 'all'}`;
+  doc.save(`madigun_top_items_rented_${rangeSlug}.pdf`);
+}
+
