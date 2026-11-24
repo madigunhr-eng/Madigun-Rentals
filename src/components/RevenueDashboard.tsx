@@ -1137,7 +1137,7 @@ export default function RevenueDashboard({ inventory, transmittals }: RevenueDas
                 </h4>
                 <div className="divide-y divide-zinc-100">
                   {selectedTxDetail.itemsDetail.map((item: any, idx: number) => (
-                    <div key={item.itemId || `${item.sku}-${idx}`} className="py-2.5 flex justify-between items-center text-xs">
+                    <div key={item.lineId || `${item.itemId}-${idx}`} className="py-2.5 flex justify-between items-center text-xs">
                       <div className="space-y-0.5 max-w-[300px]">
                         <div className="flex items-center gap-1.5">
                           <span className={`inline-block px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider border ${

@@ -277,13 +277,19 @@ export default function App() {
     const batch = localStore.batch();
     const transmittalNo = generateTransmittalNo(transmittals, deletedLogs);
 
-    // Loop through selected transmittal items to adjust inventory quantities
+    // Aggregate outbound quantities per itemId (handles duplicate items e.g. Rented + Complimentary lines)
+    const outboundByItemId: Record<string, number> = {};
     for (const txItem of txData.items) {
-      const originalItem = inventory.find(i => i.id === txItem.itemId);
+      outboundByItemId[txItem.itemId] = (outboundByItemId[txItem.itemId] || 0) + (txItem.quantity || 0);
+    }
+
+    // Loop through aggregated transmittal items to adjust inventory quantities
+    for (const [itemId, totalQty] of Object.entries(outboundByItemId)) {
+      const originalItem = inventory.find(i => i.id === itemId);
       if (!originalItem) continue;
 
       const isNoQty = originalItem.isNoQuantity || originalItem.category === 'Corkage & Service Permits' || originalItem.category === 'Rental Halls & Event Venues';
-      const newAvailable = isNoQty ? originalItem.quantityAvailable : originalItem.quantityAvailable - txItem.quantity;
+      const newAvailable = isNoQty ? originalItem.quantityAvailable : originalItem.quantityAvailable - totalQty;
       if (!isNoQty && newAvailable < 0) {
         throw new Error(`Insufficient stock for ${originalItem.name}.`);
       }
@@ -300,7 +306,7 @@ export default function App() {
         }
       }
 
-      batch.update('inventory', txItem.itemId, {
+      batch.update('inventory', itemId, {
         quantityAvailable: newAvailable,
         status
       });
@@ -364,21 +370,25 @@ export default function App() {
   // 4. Return Items (Check-in)
   const handleReturnTransmittalItems = async (
     transmittalId: string,
-    returns: { itemId: string; quantityToReturn: number }[],
+    returns: { itemId: string; quantityToReturn: number; lineIndex?: number; lineId?: string }[],
     newStatus: 'Pending' | 'On Going' | 'Partially Returned' | 'Returned'
   ) => {
     const batch = localStore.batch();
 
-    // 1. Update the transmittal object with new returned counts
+    // 1. Update the transmittal object with new returned counts per manifest line
     const tx = transmittals.find(t => t.id === transmittalId);
     if (!tx) return;
 
-    const updatedTxItems = tx.items.map(item => {
-      const returnRecord = returns.find(r => r.itemId === item.itemId);
+    const updatedTxItems = tx.items.map((item, idx) => {
+      const returnRecord = returns.find(r =>
+        (r.lineId && item.lineId && r.lineId === item.lineId) ||
+        (r.lineIndex !== undefined && r.lineIndex === idx) ||
+        (r.lineId === undefined && r.lineIndex === undefined && r.itemId === item.itemId)
+      );
       const qtyReturnedThisTime = returnRecord ? returnRecord.quantityToReturn : 0;
       return {
         ...item,
-        returnedQuantity: item.returnedQuantity + qtyReturnedThisTime
+        returnedQuantity: Math.min(item.quantity, item.returnedQuantity + qtyReturnedThisTime)
       };
     });
 
@@ -387,12 +397,19 @@ export default function App() {
       status: newStatus
     });
 
-    // 2. Restore available counts in corresponding inventory items
+    // 2. Aggregate returned counts by itemId and restore available counts in inventory
+    const returnTotalsByItemId: Record<string, number> = {};
     for (const ret of returns) {
-      const originalItem = inventory.find(i => i.id === ret.itemId);
+      if (ret.quantityToReturn > 0) {
+        returnTotalsByItemId[ret.itemId] = (returnTotalsByItemId[ret.itemId] || 0) + ret.quantityToReturn;
+      }
+    }
+
+    for (const [itemId, totalToReturn] of Object.entries(returnTotalsByItemId)) {
+      const originalItem = inventory.find(i => i.id === itemId);
       if (!originalItem) continue;
 
-      const newAvailable = Math.min(originalItem.quantityTotal, originalItem.quantityAvailable + ret.quantityToReturn);
+      const newAvailable = Math.min(originalItem.quantityTotal, originalItem.quantityAvailable + totalToReturn);
       
       let status: 'In Stock' | 'Partially Rented' | 'Out of Stock' = 'In Stock';
       if (newAvailable === 0 && originalItem.quantityTotal > 0) {
@@ -401,7 +418,7 @@ export default function App() {
         status = 'Partially Rented';
       }
 
-      batch.update('inventory', ret.itemId, {
+      batch.update('inventory', itemId, {
         quantityAvailable: newAvailable,
         status
       });
@@ -427,14 +444,19 @@ export default function App() {
       status: 'On Going'
     });
 
-    // 2. Subtract the previously returned quantities from the corresponding inventory items
+    // 2. Aggregate previously returned quantities by itemId and subtract from inventory
+    const returnedTotalsByItemId: Record<string, number> = {};
     for (const item of tx.items) {
-      if (item.returnedQuantity <= 0) continue;
-      
-      const originalItem = inventory.find(i => i.id === item.itemId);
+      if (item.returnedQuantity > 0) {
+        returnedTotalsByItemId[item.itemId] = (returnedTotalsByItemId[item.itemId] || 0) + item.returnedQuantity;
+      }
+    }
+
+    for (const [itemId, totalReturned] of Object.entries(returnedTotalsByItemId)) {
+      const originalItem = inventory.find(i => i.id === itemId);
       if (!originalItem) continue;
 
-      const newAvailable = Math.max(0, originalItem.quantityAvailable - item.returnedQuantity);
+      const newAvailable = Math.max(0, originalItem.quantityAvailable - totalReturned);
 
       let status: 'In Stock' | 'Partially Rented' | 'Out of Stock' = 'In Stock';
       if (newAvailable === 0 && originalItem.quantityTotal > 0) {
@@ -443,7 +465,7 @@ export default function App() {
         status = 'Partially Rented';
       }
 
-      batch.update('inventory', item.itemId, {
+      batch.update('inventory', itemId, {
         quantityAvailable: newAvailable,
         status
       });
@@ -465,15 +487,20 @@ export default function App() {
     const batch = localStore.batch();
 
     if (restoreInventory && tx.status !== 'Returned') {
-      // Loop through items and add back outstanding rented units to available counts
+      // Aggregate outstanding units by itemId across all manifest lines
+      const outstandingByItemId: Record<string, number> = {};
       for (const txItem of tx.items) {
         const outstandingQty = txItem.quantity - txItem.returnedQuantity;
-        if (outstandingQty <= 0) continue;
+        if (outstandingQty > 0) {
+          outstandingByItemId[txItem.itemId] = (outstandingByItemId[txItem.itemId] || 0) + outstandingQty;
+        }
+      }
 
-        const originalItem = inventory.find(i => i.id === txItem.itemId);
+      for (const [itemId, totalOutstanding] of Object.entries(outstandingByItemId)) {
+        const originalItem = inventory.find(i => i.id === itemId);
         if (!originalItem) continue;
 
-        const newAvailable = Math.min(originalItem.quantityTotal, originalItem.quantityAvailable + outstandingQty);
+        const newAvailable = Math.min(originalItem.quantityTotal, originalItem.quantityAvailable + totalOutstanding);
         let status: 'In Stock' | 'Partially Rented' | 'Out of Stock' = 'In Stock';
         if (newAvailable === 0 && originalItem.quantityTotal > 0) {
           status = 'Out of Stock';
@@ -481,7 +508,7 @@ export default function App() {
           status = 'Partially Rented';
         }
 
-        batch.update('inventory', txItem.itemId, {
+        batch.update('inventory', itemId, {
           quantityAvailable: newAvailable,
           status
         });
@@ -529,15 +556,20 @@ export default function App() {
     const batch = localStore.batch();
     const tx = log.originalData;
 
-    // Deduct outstanding quantities from inventory again
+    // Deduct outstanding quantities from inventory again (aggregated per itemId)
     if (tx.status !== 'Returned' && tx.items) {
+      const outstandingByItemId: Record<string, number> = {};
       for (const txItem of tx.items) {
         const outstandingQty = txItem.quantity - txItem.returnedQuantity;
-        if (outstandingQty <= 0) continue;
+        if (outstandingQty > 0) {
+          outstandingByItemId[txItem.itemId] = (outstandingByItemId[txItem.itemId] || 0) + outstandingQty;
+        }
+      }
 
-        const originalItem = inventory.find(i => i.id === txItem.itemId);
+      for (const [itemId, totalOutstanding] of Object.entries(outstandingByItemId)) {
+        const originalItem = inventory.find(i => i.id === itemId);
         if (originalItem) {
-          const newAvailable = Math.max(0, originalItem.quantityAvailable - outstandingQty);
+          const newAvailable = Math.max(0, originalItem.quantityAvailable - totalOutstanding);
           let status: 'In Stock' | 'Partially Rented' | 'Out of Stock' = 'In Stock';
           if (newAvailable === 0 && originalItem.quantityTotal > 0) {
             status = 'Out of Stock';
@@ -545,7 +577,7 @@ export default function App() {
             status = 'Partially Rented';
           }
 
-          batch.update('inventory', txItem.itemId, {
+          batch.update('inventory', itemId, {
             quantityAvailable: newAvailable,
             status
           });

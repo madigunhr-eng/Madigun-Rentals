@@ -27,8 +27,9 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
   const [dateCheckin, setDateCheckin] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Selected items in this transmittal with complimentary allocation flag
+  // Selected items in this transmittal with unique lineId and complimentary allocation flag
   const [selectedItems, setSelectedItems] = useState<{
+    lineId: string;
     itemId: string;
     quantity: number;
     isComplimentary: boolean;
@@ -40,30 +41,55 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Available items in inventory that have quantityAvailable > 0 (or isNoQuantity/Corkage), are not stagnant, and aren't already selected
+  const createLineId = () => `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const getAllocatedQtyForItem = (itemId: string, excludeLineId?: string) =>
+    selectedItems
+      .filter(si => si.itemId === itemId && si.lineId !== excludeLineId)
+      .reduce((sum, si) => sum + si.quantity, 0);
+
+  // Available items in inventory that have quantityAvailable > 0 (or isNoQuantity/Corkage) and are not retired
+  // Same item can be added multiple times (e.g. once as Rented and once as Complimentary) as long as stock remains
   const eligibleItems = inventory.filter(item => {
     const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
     const isAvailable = isNoQty || item.quantityAvailable > 0;
-    const isNotStagnant = item.status !== 'Retired';
-    const isNotSelected = !selectedItems.some(si => si.itemId === item.id);
+    const isNotStagnant = item.status !== 'Retired' && item.status !== 'Decommissioned';
     const matchesQuery = item.name.toLowerCase().includes(searchItemQuery.toLowerCase()) || 
                          item.sku.toLowerCase().includes(searchItemQuery.toLowerCase()) ||
                          item.category.toLowerCase().includes(searchItemQuery.toLowerCase());
-    return isAvailable && isNotStagnant && isNotSelected && matchesQuery;
+    return isAvailable && isNotStagnant && matchesQuery;
   });
 
   // Handle adding an item to the transmittal list
   const handleAddItem = (item: InventoryItem, isComplimentary = false) => {
-    setSelectedItems([...selectedItems, { itemId: item.id, quantity: 1, isComplimentary }]);
+    const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
+    const allocatedQty = getAllocatedQtyForItem(item.id);
+    const remainingAvail = isNoQty ? 9999 : Math.max(0, item.quantityAvailable - allocatedQty);
+
+    if (!isNoQty && remainingAvail <= 0) {
+      setErrorMsg(`All ${item.quantityAvailable} available units of "${item.name}" are already allocated in the manifest. Reduce an existing line quantity to split.`);
+      setShowItemDropdown(false);
+      return;
+    }
+
+    setSelectedItems([
+      ...selectedItems,
+      {
+        lineId: createLineId(),
+        itemId: item.id,
+        quantity: 1,
+        isComplimentary
+      }
+    ]);
     setSearchItemQuery('');
     setShowItemDropdown(false);
     setErrorMsg('');
   };
 
-  // Toggle complimentary status for an item
-  const handleToggleComplimentary = (itemId: string, isComplimentary: boolean) => {
+  // Toggle complimentary status for a specific manifest line
+  const handleToggleComplimentary = (lineId: string, isComplimentary: boolean) => {
     setSelectedItems(selectedItems.map(si => 
-      si.itemId === itemId ? { ...si, isComplimentary } : si
+      si.lineId === lineId ? { ...si, isComplimentary } : si
     ));
   };
 
@@ -72,24 +98,28 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
     setSelectedItems(selectedItems.map(si => ({ ...si, isComplimentary: complimentary })));
   };
 
-  // Handle removing an item from the transmittal list
-  const handleRemoveItem = (itemId: string) => {
-    setSelectedItems(selectedItems.filter(si => si.itemId !== itemId));
+  // Handle removing a specific manifest line
+  const handleRemoveItem = (lineId: string) => {
+    setSelectedItems(selectedItems.filter(si => si.lineId !== lineId));
   };
 
-  // Handle quantity changes with validation
-  const handleQuantityChange = (itemId: string, val: number) => {
-    const item = inventory.find(i => i.id === itemId);
+  // Handle quantity changes with pooled stock validation across all lines sharing the same itemId
+  const handleQuantityChange = (lineId: string, val: number) => {
+    const targetLine = selectedItems.find(si => si.lineId === lineId);
+    if (!targetLine) return;
+
+    const item = inventory.find(i => i.id === targetLine.itemId);
     if (!item) return;
 
     const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
-    const maxVal = isNoQty ? 9999 : item.quantityAvailable;
+    const otherLinesQty = getAllocatedQtyForItem(item.id, lineId);
+    const maxVal = isNoQty ? 9999 : Math.max(0, item.quantityAvailable - otherLinesQty);
 
-    // Constrain quantity between 0 and maxVal (allowing 0 so they can clear/type)
+    // Constrain quantity between 0 and remaining available stock (allowing 0 so they can clear/type)
     const validQty = Math.max(0, Math.min(maxVal, isNaN(val) ? 0 : val));
     
     setSelectedItems(selectedItems.map(si => 
-      si.itemId === itemId ? { ...si, quantity: validQty } : si
+      si.lineId === lineId ? { ...si, quantity: validQty } : si
     ));
   };
 
@@ -112,6 +142,20 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
     if (zeroItem) {
       const item = inventory.find(i => i.id === zeroItem.itemId);
       return setErrorMsg(`Please enter a quantity of 1 or more for "${item?.name || 'item'}"`);
+    }
+
+    // Validate combined quantities per itemId across all manifest lines (e.g. Rented + Complimentary)
+    const totalByItemId: Record<string, number> = {};
+    for (const si of selectedItems) {
+      totalByItemId[si.itemId] = (totalByItemId[si.itemId] || 0) + si.quantity;
+    }
+    for (const [itemId, totalQty] of Object.entries(totalByItemId)) {
+      const itm = inventory.find(i => i.id === itemId);
+      if (!itm) continue;
+      const isNoQty = itm.isNoQuantity || itm.category === 'Corkage & Service Permits';
+      if (!isNoQty && totalQty > itm.quantityAvailable) {
+        return setErrorMsg(`Combined quantity (${totalQty}) for "${itm.name}" exceeds available stock (${itm.quantityAvailable}).`);
+      }
     }
 
     // Check if any selected item is an event venue and is already booked on the selected date range
@@ -139,11 +183,12 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
       }
     }
 
-    // Build transmittal items array with complimentary flag
+    // Build transmittal items array with unique lineId and complimentary flag
     const transmittalItems: TransmittalItem[] = selectedItems.map(si => {
       const item = inventory.find(i => i.id === si.itemId)!;
       const isComp = !!si.isComplimentary;
       return {
+        lineId: si.lineId,
         itemId: si.itemId,
         name: item.name,
         sku: item.sku,
@@ -348,17 +393,33 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                       ) : (
                         eligibleItems.map(item => {
                           const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
+                          const allocatedQty = getAllocatedQtyForItem(item.id);
+                          const remainingAvail = isNoQty ? 9999 : Math.max(0, item.quantityAvailable - allocatedQty);
+                          const isExhausted = !isNoQty && remainingAvail <= 0;
+
                           return (
                             <div
                               key={item.id}
                               className="p-3 hover:bg-zinc-50 flex flex-wrap justify-between items-center text-xs gap-2 transition-colors border-b border-zinc-100 last:border-0"
                             >
-                              <div className="flex-1 min-w-[200px]" onClick={() => handleAddItem(item, false)}>
-                                <div className="font-bold text-zinc-900 uppercase tracking-tight">{item.name}</div>
+                              <div
+                                className={`flex-1 min-w-[200px] ${isExhausted ? 'opacity-60' : 'cursor-pointer'}`}
+                                onClick={() => !isExhausted && handleAddItem(item, false)}
+                              >
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-bold text-zinc-900 uppercase tracking-tight">{item.name}</span>
+                                  {allocatedQty > 0 && (
+                                    <span className="text-[9px] font-bold bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 uppercase tracking-wider">
+                                      {allocatedQty} in manifest
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-[10px] text-zinc-500 font-mono mt-0.5 uppercase tracking-wide">
                                   {item.sku} • {item.category} • Rate: ₱{Number(item.rentalPrice || 0).toLocaleString()}
                                   {!isNoQty && (
-                                    <span className="ml-2 font-bold text-zinc-800">({item.quantityAvailable} avail)</span>
+                                    <span className="ml-2 font-bold text-zinc-800">
+                                      ({remainingAvail} of {item.quantityAvailable} left)
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -368,29 +429,35 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                                     Service Fee
                                   </span>
                                 ) : (
-                                  <span className="text-[9px] font-bold bg-zinc-100 text-zinc-700 border border-zinc-200 px-2 py-0.5 uppercase tracking-wider">
-                                    {item.quantityAvailable} left
+                                  <span className={`text-[9px] font-bold px-2 py-0.5 uppercase tracking-wider border ${
+                                    isExhausted
+                                      ? 'bg-red-50 text-red-700 border-red-200'
+                                      : 'bg-zinc-100 text-zinc-700 border-zinc-200'
+                                  }`}>
+                                    {remainingAvail} left
                                   </span>
                                 )}
                                 <button
                                   type="button"
+                                  disabled={isExhausted}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleAddItem(item, false);
                                   }}
-                                  className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-[9px] uppercase tracking-wider cursor-pointer"
-                                  title="Add as standard rented asset"
+                                  className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[9px] uppercase tracking-wider cursor-pointer"
+                                  title={isExhausted ? 'All available units already allocated in manifest' : 'Add as standard rented asset line'}
                                 >
                                   + Rented
                                 </button>
                                 <button
                                   type="button"
+                                  disabled={isExhausted}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleAddItem(item, true);
                                   }}
-                                  className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                  title="Add as free complimentary courtesy asset"
+                                  className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                                  title={isExhausted ? 'All available units already allocated in manifest' : 'Add as free complimentary courtesy asset line'}
                                 >
                                   <Gift className="h-3 w-3" />
                                   + Complimentary
@@ -414,7 +481,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
               <div className="flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-zinc-850" />
                 <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest">
-                  Manifest Batch List ({selectedItems.length} profile{selectedItems.length !== 1 ? 's' : ''})
+                  Manifest Batch List ({selectedItems.length} line{selectedItems.length !== 1 ? 's' : ''})
                 </h3>
               </div>
 
@@ -456,13 +523,19 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                   const item = inventory.find(i => i.id === si.itemId)!;
                   if (!item) return null;
                   const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
+                  const otherLinesQty = getAllocatedQtyForItem(item.id, si.lineId);
+                  const maxForLine = isNoQty ? 9999 : Math.max(0, item.quantityAvailable - otherLinesQty);
+                  const remainingUnallocated = isNoQty ? 9999 : Math.max(0, item.quantityAvailable - (otherLinesQty + si.quantity));
+                  const hasOppositeLine = selectedItems.some(
+                    other => other.itemId === si.itemId && other.isComplimentary !== si.isComplimentary
+                  );
 
                   return (
                     <motion.div
                       layout
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      key={si.itemId}
+                      key={si.lineId}
                       className={`p-4 border transition-all ${
                         si.isComplimentary
                           ? 'bg-emerald-50/60 border-emerald-300 shadow-xs'
@@ -477,10 +550,14 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                             <span className="font-bold text-zinc-900 uppercase tracking-tight text-xs">
                               {item.name}
                             </span>
-                            {si.isComplimentary && (
+                            {si.isComplimentary ? (
                               <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 uppercase tracking-wider flex items-center gap-1">
                                 <Gift className="h-2.5 w-2.5" />
                                 Complimentary / Courtesy
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black text-zinc-700 bg-zinc-200/70 border border-zinc-300 px-2 py-0.5 uppercase tracking-wider">
+                                Rented
                               </span>
                             )}
                             {isNoQty && (
@@ -508,10 +585,32 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                             {!isNoQty && (
                               <>
                                 <span>•</span>
-                                <span className="text-zinc-800 font-semibold">{item.quantityAvailable} units available</span>
+                                <span className="text-zinc-800 font-semibold">
+                                  {otherLinesQty > 0
+                                    ? `${otherLinesQty + si.quantity} / ${item.quantityAvailable} allocated (${remainingUnallocated} left)`
+                                    : `${item.quantityAvailable} units available`}
+                                </span>
                               </>
                             )}
                           </div>
+                          {!hasOppositeLine && (isNoQty || remainingUnallocated > 0) && (
+                            <div className="mt-2">
+                              <button
+                                type="button"
+                                onClick={() => handleAddItem(item, !si.isComplimentary)}
+                                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 border transition-colors cursor-pointer inline-flex items-center gap-1 ${
+                                  si.isComplimentary
+                                    ? 'text-zinc-700 bg-white border-zinc-300 hover:bg-zinc-100'
+                                    : 'text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
+                                }`}
+                              >
+                                <Plus className="h-2.5 w-2.5" />
+                                {si.isComplimentary
+                                  ? 'Also Add Same Item as Rented'
+                                  : 'Also Add Same Item as Complimentary'}
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Allocation Mode Segmented Switch, Qty Input, and Remove */}
@@ -524,7 +623,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                             <div className="flex items-center bg-zinc-200/80 p-0.5 border border-zinc-300 text-[10px] font-bold">
                               <button
                                 type="button"
-                                onClick={() => handleToggleComplimentary(si.itemId, false)}
+                                onClick={() => handleToggleComplimentary(si.lineId, false)}
                                 className={`px-2.5 py-1 uppercase tracking-wider transition-all cursor-pointer ${
                                   !si.isComplimentary
                                     ? 'bg-zinc-900 text-white font-extrabold shadow-xs'
@@ -535,7 +634,7 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleToggleComplimentary(si.itemId, true)}
+                                onClick={() => handleToggleComplimentary(si.lineId, true)}
                                 className={`px-2.5 py-1 uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
                                   si.isComplimentary
                                     ? 'bg-emerald-700 text-white font-extrabold shadow-xs'
@@ -554,14 +653,14 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
                               {isNoQty ? 'Permit Count' : 'Quantity'}
                             </label>
                             <input
-                              id={`qty-input-${item.sku}`}
+                              id={`qty-input-${item.sku}-${index}`}
                               type="number"
                               min="0"
-                              max={isNoQty ? 9999 : item.quantityAvailable}
+                              max={maxForLine}
                               value={si.quantity === 0 ? '' : si.quantity}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? 0 : Number(e.target.value);
-                                handleQuantityChange(si.itemId, val);
+                                handleQuantityChange(si.lineId, val);
                               }}
                               className="w-16 px-2 py-1 text-center font-bold text-xs font-mono bg-white border border-zinc-200 focus:outline-none focus:border-zinc-900"
                             />
@@ -569,9 +668,9 @@ export default function CreateTransmittal({ inventory, onSubmit, onCancel }: Cre
 
                           {/* Remove Button */}
                           <button
-                            id={`btn-remove-item-${item.sku}`}
+                            id={`btn-remove-item-${item.sku}-${index}`}
                             type="button"
-                            onClick={() => handleRemoveItem(si.itemId)}
+                            onClick={() => handleRemoveItem(si.lineId)}
                             className="p-1.5 text-zinc-400 hover:text-red-750 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all cursor-pointer mt-4"
                             title="Remove item from manifest"
                           >

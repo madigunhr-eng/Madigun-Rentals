@@ -7,12 +7,14 @@ import { jsPDF } from 'jspdf';
 import { getSystemLogoBase64, drawBrandedHeader, applyCenterWatermarkToAllPages } from '../utils/pdfHelper';
 import { calculateTransmittalRevenue } from '../utils';
 
+const getTxLineKey = (item: TransmittalItem, idx: number) => item.lineId || `${item.itemId}__${idx}`;
+
 interface TransmittalListProps {
   transmittals: Transmittal[];
   inventory: InventoryItem[];
   onReturnItems: (
     transmittalId: string,
-    returns: { itemId: string; quantityToReturn: number }[],
+    returns: { itemId: string; quantityToReturn: number; lineIndex?: number; lineId?: string }[],
     newStatus: 'Pending' | 'On Going' | 'Partially Returned' | 'Returned'
   ) => Promise<void>;
   onDeleteTransmittal: (id: string, restoreInventory?: boolean) => Promise<void>;
@@ -1134,18 +1136,23 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     setEditItemSearchQuery('');
     setShowEditItemDropdown(false);
     
-    // Initialize return quantities state to 0 for all items
+    // Initialize return quantities state keyed per manifest line
     const initialQtys: Record<string, number> = {};
-    tx.items.forEach(item => {
+    tx.items.forEach((item, idx) => {
       const remaining = item.quantity - item.returnedQuantity;
-      initialQtys[item.itemId] = remaining > 0 ? remaining : 0; // default to returning everything remaining
+      initialQtys[getTxLineKey(item, idx)] = remaining > 0 ? remaining : 0; // default to returning everything remaining
     });
     setReturnQtys(initialQtys);
   };
 
   const handleStartEditing = () => {
     if (!selectedTx) return;
-    setEditingItems([...selectedTx.items]);
+    setEditingItems(
+      selectedTx.items.map((item, idx) => ({
+        ...item,
+        lineId: item.lineId || `line-edit-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`
+      }))
+    );
     setIsEditingItems(true);
     setEditItemSearchQuery('');
     setShowEditItemDropdown(false);
@@ -1160,7 +1167,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     setSuccessMsg('');
 
     try {
-      // 1. Validate quantities & stock
+      // 1. Validate individual line quantities
       for (const editItem of editingItems) {
         const minAllowed = Math.max(1, editItem.returnedQuantity);
         if (editItem.quantity < minAllowed) {
@@ -1171,56 +1178,70 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
         if (!originalItem) {
           throw new Error(`Item ${editItem.name} not found in master inventory.`);
         }
+      }
 
-        const originalTxItem = selectedTx.items.find(t => t.itemId === editItem.itemId);
-        const originalQty = originalTxItem ? originalTxItem.quantity : 0;
-        const diff = editItem.quantity - originalQty;
+      // 2. Aggregate old vs new quantities per itemId (supports duplicate items e.g. Rented + Complimentary)
+      const oldTotalsByItemId: Record<string, number> = {};
+      selectedTx.items.forEach(t => {
+        oldTotalsByItemId[t.itemId] = (oldTotalsByItemId[t.itemId] || 0) + t.quantity;
+      });
+
+      const newTotalsByItemId: Record<string, number> = {};
+      editingItems.forEach(t => {
+        newTotalsByItemId[t.itemId] = (newTotalsByItemId[t.itemId] || 0) + t.quantity;
+      });
+
+      const allItemIds = Array.from(new Set([
+        ...Object.keys(oldTotalsByItemId),
+        ...Object.keys(newTotalsByItemId)
+      ]));
+
+      for (const itemId of allItemIds) {
+        const originalItem = inventory.find(i => i.id === itemId);
+        if (!originalItem) continue;
+        const isNoQty = originalItem.isNoQuantity || originalItem.category === 'Corkage & Service Permits' || originalItem.category === 'Rental Halls & Event Venues';
+        if (isNoQty) continue;
+
+        const oldTotal = oldTotalsByItemId[itemId] || 0;
+        const newTotal = newTotalsByItemId[itemId] || 0;
+        const diff = newTotal - oldTotal;
 
         if (diff > originalItem.quantityAvailable) {
-          throw new Error(`Insufficient stock for ${editItem.name}. Only ${originalItem.quantityAvailable} more units available.`);
+          throw new Error(`Insufficient stock for ${originalItem.name}. Only ${originalItem.quantityAvailable} more units available.`);
         }
       }
 
-      // 2. Begin localStore batch
+      // 3. Check if anything actually changed (quantities, allocation types, or items added/removed)
+      const normalizedOld = selectedTx.items.map(i => ({
+        itemId: i.itemId,
+        quantity: i.quantity,
+        isComplimentary: !!i.isComplimentary
+      }));
+      const normalizedNew = editingItems.map(i => ({
+        itemId: i.itemId,
+        quantity: i.quantity,
+        isComplimentary: !!i.isComplimentary
+      }));
+      const hasChanges = JSON.stringify(normalizedOld) !== JSON.stringify(normalizedNew);
+
+      if (!hasChanges) {
+        setIsEditingItems(false);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 4. Begin localStore batch and update inventory once per itemId
       const batch = localStore.batch();
 
-      // We need to keep track of inventory items we are updating
-      // We also check if anything actually changed
-      let hasChanges = false;
+      for (const itemId of allItemIds) {
+        const originalItem = inventory.find(i => i.id === itemId);
+        if (!originalItem) continue;
+        const isNoQty = originalItem.isNoQuantity || originalItem.category === 'Corkage & Service Permits' || originalItem.category === 'Rental Halls & Event Venues';
+        if (isNoQty) continue;
 
-      // Let's find all deleted items (items in selectedTx.items but not in editingItems)
-      const deletedItems = selectedTx.items.filter(otx => !editingItems.some(etx => etx.itemId === otx.itemId));
-      if (deletedItems.length > 0) {
-        hasChanges = true;
-        for (const delItem of deletedItems) {
-          const originalItem = inventory.find(i => i.id === delItem.itemId);
-          if (originalItem) {
-            const newAvailable = originalItem.quantityAvailable + delItem.quantity;
-            let status: 'In Stock' | 'Partially Rented' | 'Out of Stock' = 'In Stock';
-            if (newAvailable === 0 && originalItem.quantityTotal > 0) {
-              status = 'Out of Stock';
-            } else if (newAvailable < originalItem.quantityTotal) {
-              status = 'Partially Rented';
-            }
-
-            batch.update('inventory', delItem.itemId, {
-              quantityAvailable: newAvailable,
-              status
-            });
-          }
-        }
-      }
-
-      // Let's process all items in editingItems
-      for (const editItem of editingItems) {
-        const originalTxItem = selectedTx.items.find(t => t.itemId === editItem.itemId);
-        const originalQty = originalTxItem ? originalTxItem.quantity : 0;
-        const diff = editItem.quantity - originalQty;
-
+        const diff = (newTotalsByItemId[itemId] || 0) - (oldTotalsByItemId[itemId] || 0);
         if (diff !== 0) {
-          hasChanges = true;
-          const originalItem = inventory.find(i => i.id === editItem.itemId)!;
-          const newAvailable = originalItem.quantityAvailable - diff;
+          const newAvailable = Math.max(0, Math.min(originalItem.quantityTotal, originalItem.quantityAvailable - diff));
           let status: 'In Stock' | 'Partially Rented' | 'Out of Stock' = 'In Stock';
           if (newAvailable === 0 && originalItem.quantityTotal > 0) {
             status = 'Out of Stock';
@@ -1228,21 +1249,14 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
             status = 'Partially Rented';
           }
 
-          batch.update('inventory', editItem.itemId, {
+          batch.update('inventory', itemId, {
             quantityAvailable: newAvailable,
             status
           });
         }
       }
 
-      // If there are no changes, we can just close edit mode and return
-      if (!hasChanges && editingItems.length === selectedTx.items.length) {
-        setIsEditingItems(false);
-        setIsSubmitting(false);
-        return;
-      }
-
-      // 3. Determine the new status of the transmittal
+      // 5. Determine the new status of the transmittal
       let allFullyReturned = true;
       let anyReturned = false;
 
@@ -1263,7 +1277,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
         ? 'Partially Returned'
         : 'On Going';
 
-      // 4. Update transmittal document
+      // 6. Update transmittal document
       const updateData: any = {
         items: editingItems,
         status: newStatus,
@@ -1299,9 +1313,9 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
       
       // Update return quantities state based on new items manifest
       const updatedReturnQtys: Record<string, number> = {};
-      editingItems.forEach(item => {
+      editingItems.forEach((item, idx) => {
         const remaining = item.quantity - item.returnedQuantity;
-        updatedReturnQtys[item.itemId] = remaining > 0 ? remaining : 0;
+        updatedReturnQtys[getTxLineKey(item, idx)] = remaining > 0 ? remaining : 0;
       });
       setReturnQtys(updatedReturnQtys);
 
@@ -1313,12 +1327,12 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     }
   };
 
-  // Adjust return quantity value
-  const handleReturnQtyChange = (itemId: string, val: number, maxVal: number) => {
+  // Adjust return quantity value for a specific manifest line
+  const handleReturnQtyChange = (lineKey: string, val: number, maxVal: number) => {
     const validVal = Math.max(0, Math.min(maxVal, val));
     setReturnQtys({
       ...returnQtys,
-      [itemId]: validVal
+      [lineKey]: validVal
     });
   };
 
@@ -1328,9 +1342,18 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     setErrorMsg('');
     setSuccessMsg('');
 
-    // Compile returns list
-    const returnsList = Object.entries(returnQtys)
-      .map(([itemId, qty]) => ({ itemId, quantityToReturn: Number(qty) }))
+    // Compile returns list mapped by manifest line index & lineId
+    const returnsList = selectedTx.items
+      .map((item, idx) => {
+        const lineKey = getTxLineKey(item, idx);
+        const qty = Number(returnQtys[lineKey] || 0);
+        return {
+          itemId: item.itemId,
+          quantityToReturn: qty,
+          lineIndex: idx,
+          lineId: item.lineId
+        };
+      })
       .filter(r => r.quantityToReturn > 0);
 
     if (returnsList.length === 0) {
@@ -1341,14 +1364,14 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
     try {
       setIsSubmitting(true);
 
-      // Determine final status
-      // We check if the sum of (returnedQuantity + current quantityToReturn) equals (total checked out quantity) for all items
+      // Determine final status across all manifest lines
       let allFullyReturned = true;
       let anyReturned = false;
 
-      const updatedItems = selectedTx.items.map(item => {
-        const toReturn = returnQtys[item.itemId] || 0;
-        const totalReturned = item.returnedQuantity + toReturn;
+      const updatedItems = selectedTx.items.map((item, idx) => {
+        const lineKey = getTxLineKey(item, idx);
+        const toReturn = Number(returnQtys[lineKey] || 0);
+        const totalReturned = Math.min(item.quantity, item.returnedQuantity + toReturn);
         
         if (totalReturned < item.quantity) {
           allFullyReturned = false;
@@ -1380,11 +1403,11 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
       setSelectedTx(updatedTx);
       setSuccessMsg('Return logged successfully and inventory updated in real-time!');
       
-      // Reset return quantities to remaining
+      // Reset return quantities to remaining per manifest line
       const resetQtys: Record<string, number> = {};
-      updatedItems.forEach(item => {
+      updatedItems.forEach((item, idx) => {
         const remaining = item.quantity - item.returnedQuantity;
-        resetQtys[item.itemId] = remaining > 0 ? remaining : 0;
+        resetQtys[getTxLineKey(item, idx)] = remaining > 0 ? remaining : 0;
       });
       setReturnQtys(resetQtys);
       
@@ -1664,15 +1687,21 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                       <div className="space-y-4">
                         <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                           {editingItems.map((item, idx) => {
+                            const lineKey = getTxLineKey(item, idx);
                             const originalItem = inventory.find(i => i.id === item.itemId);
+                            const isNoQty = originalItem?.isNoQuantity || originalItem?.category === 'Corkage & Service Permits' || originalItem?.category === 'Rental Halls & Event Venues';
                             const availableStock = originalItem ? originalItem.quantityAvailable : 0;
-                            const originalTxItem = selectedTx.items.find(t => t.itemId === item.itemId);
-                            const originalQty = originalTxItem ? originalTxItem.quantity : 0;
-                            const maxAllowed = item.quantity + availableStock;
+                            const oldTotalForItem = selectedTx.items
+                              .filter(t => t.itemId === item.itemId)
+                              .reduce((s, t) => s + t.quantity, 0);
+                            const otherEditingQty = editingItems
+                              .filter((ei, i) => i !== idx && ei.itemId === item.itemId)
+                              .reduce((s, ei) => s + ei.quantity, 0);
                             const minAllowed = Math.max(1, item.returnedQuantity);
+                            const maxAllowed = isNoQty ? 9999 : Math.max(minAllowed, oldTotalForItem + availableStock - otherEditingQty);
 
                             return (
-                              <div key={item.itemId || idx} className={`p-3 border flex flex-col gap-2.5 transition-colors ${item.isComplimentary ? 'bg-emerald-50/50 border-emerald-300' : 'bg-zinc-50 border-zinc-250'}`}>
+                              <div key={lineKey} className={`p-3 border flex flex-col gap-2.5 transition-colors ${item.isComplimentary ? 'bg-emerald-50/50 border-emerald-300' : 'bg-zinc-50 border-zinc-250'}`}>
                                 <div className="flex justify-between items-start">
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
@@ -1689,11 +1718,11 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                     </p>
                                   </div>
                                   <button
-                                    id={`btn-delete-edit-item-${item.sku}`}
+                                    id={`btn-delete-edit-item-${item.sku}-${idx}`}
                                     type="button"
                                     disabled={item.returnedQuantity > 0}
                                     onClick={() => {
-                                      setEditingItems(editingItems.filter(ei => ei.itemId !== item.itemId));
+                                      setEditingItems(editingItems.filter((_, i) => i !== idx));
                                     }}
                                     className={`text-zinc-400 hover:text-red-650 p-1 transition-colors ${item.returnedQuantity > 0 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
                                     title={item.returnedQuantity > 0 ? "Cannot delete item. Units are already returned." : "Remove item from manifest"}
@@ -1709,7 +1738,7 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? {
+                                        setEditingItems(editingItems.map((ei, i) => i === idx ? {
                                           ...ei,
                                           isComplimentary: !ei.isComplimentary,
                                           allocationType: !ei.isComplimentary ? 'Complimentary' : 'Rented'
@@ -1741,18 +1770,18 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                       <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Qty</span>
                                       <div className="flex items-center border border-zinc-200 bg-white overflow-hidden">
                                         <button
-                                          id={`btn-edit-qty-dec-${item.sku}`}
+                                          id={`btn-edit-qty-dec-${item.sku}-${idx}`}
                                           type="button"
                                           onClick={() => {
                                             const newQty = Math.max(minAllowed, item.quantity - 1);
-                                            setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: newQty } : ei));
+                                            setEditingItems(editingItems.map((ei, i) => i === idx ? { ...ei, quantity: newQty } : ei));
                                           }}
                                           className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
                                         >
                                           <MinusCircle className="h-3.5 w-3.5" />
                                         </button>
                                         <input
-                                          id={`input-edit-qty-${item.sku}`}
+                                          id={`input-edit-qty-${item.sku}-${idx}`}
                                           type="number"
                                           min="0"
                                           max={maxAllowed}
@@ -1760,16 +1789,16 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                           onChange={(e) => {
                                             const val = e.target.value === '' ? 0 : Number(e.target.value);
                                             const validQty = Math.max(0, Math.min(maxAllowed, val));
-                                            setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: validQty } : ei));
+                                            setEditingItems(editingItems.map((ei, i) => i === idx ? { ...ei, quantity: validQty } : ei));
                                           }}
                                           className="w-10 text-center font-bold text-xs font-mono focus:outline-none py-1"
                                         />
                                         <button
-                                          id={`btn-edit-qty-inc-${item.sku}`}
+                                          id={`btn-edit-qty-inc-${item.sku}-${idx}`}
                                           type="button"
                                           onClick={() => {
                                             const newQty = Math.min(maxAllowed, item.quantity + 1);
-                                            setEditingItems(editingItems.map(ei => ei.itemId === item.itemId ? { ...ei, quantity: newQty } : ei));
+                                            setEditingItems(editingItems.map((ei, i) => i === idx ? { ...ei, quantity: newQty } : ei));
                                           }}
                                           className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
                                         >
@@ -1836,73 +1865,88 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                 >
                                   {inventory
                                     .filter(item => {
-                                      const isAvailable = item.quantityAvailable > 0;
-                                      const isNotStagnant = item.status !== 'Retired';
-                                      const isNotAlreadyAdded = !editingItems.some(ei => ei.itemId === item.id);
+                                      const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
+                                      const oldTotal = selectedTx.items.filter(t => t.itemId === item.id).reduce((s, t) => s + t.quantity, 0);
+                                      const curEditTotal = editingItems.filter(ei => ei.itemId === item.id).reduce((s, ei) => s + ei.quantity, 0);
+                                      const remainingStock = item.quantityAvailable + oldTotal - curEditTotal;
+                                      const isAvailable = isNoQty || remainingStock > 0;
+                                      const isNotStagnant = item.status !== 'Retired' && item.status !== 'Decommissioned';
                                       const matchesQuery = item.name.toLowerCase().includes(editItemSearchQuery.toLowerCase()) ||
                                                            item.sku.toLowerCase().includes(editItemSearchQuery.toLowerCase());
-                                      return isAvailable && isNotStagnant && isNotAlreadyAdded && matchesQuery;
+                                      return isAvailable && isNotStagnant && matchesQuery;
                                     })
-                                    .map((item) => (
-                                      <div
-                                        key={item.id}
-                                        className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 transition-colors flex justify-between items-center text-xs"
-                                      >
-                                        <div className="min-w-0 flex-1 pr-2">
-                                          <span className="font-bold text-zinc-900 block uppercase truncate">{item.name}</span>
-                                          <span className="text-[10px] text-zinc-400 font-mono uppercase block">{item.sku} • {item.quantityAvailable} Avail</span>
+                                    .map((item) => {
+                                      const oldTotal = selectedTx.items.filter(t => t.itemId === item.id).reduce((s, t) => s + t.quantity, 0);
+                                      const curEditTotal = editingItems.filter(ei => ei.itemId === item.id).reduce((s, ei) => s + ei.quantity, 0);
+                                      const remainingStock = item.quantityAvailable + oldTotal - curEditTotal;
+                                      return (
+                                        <div
+                                          key={item.id}
+                                          className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 transition-colors flex justify-between items-center text-xs"
+                                        >
+                                          <div className="min-w-0 flex-1 pr-2">
+                                            <span className="font-bold text-zinc-900 block uppercase truncate">{item.name}</span>
+                                            <span className="text-[10px] text-zinc-400 font-mono uppercase block">
+                                              {item.sku} • {remainingStock} Avail {curEditTotal > 0 ? `(${curEditTotal} in manifest)` : ''}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                            <button
+                                              id={`btn-add-searched-item-${item.sku}`}
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingItems([...editingItems, {
+                                                  lineId: `line-edit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                                                  itemId: item.id,
+                                                  name: item.name,
+                                                  sku: item.sku,
+                                                  quantity: 1,
+                                                  returnedQuantity: 0,
+                                                  isComplimentary: false,
+                                                  allocationType: 'Rented'
+                                                }]);
+                                                setEditItemSearchQuery('');
+                                                setShowEditItemDropdown(false);
+                                              }}
+                                              className="px-2 py-1 bg-zinc-900 text-white font-bold text-[9px] uppercase tracking-wider hover:bg-zinc-800 cursor-pointer"
+                                            >
+                                              + Rented
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingItems([...editingItems, {
+                                                  lineId: `line-edit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                                                  itemId: item.id,
+                                                  name: item.name,
+                                                  sku: item.sku,
+                                                  quantity: 1,
+                                                  returnedQuantity: 0,
+                                                  isComplimentary: true,
+                                                  allocationType: 'Complimentary'
+                                                }]);
+                                                setEditItemSearchQuery('');
+                                                setShowEditItemDropdown(false);
+                                              }}
+                                              className="px-2 py-1 bg-emerald-700 text-white font-bold text-[9px] uppercase tracking-wider hover:bg-emerald-800 flex items-center gap-1 cursor-pointer"
+                                            >
+                                              <Gift className="h-2.5 w-2.5" />
+                                              + Comp
+                                            </button>
+                                          </div>
                                         </div>
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                          <button
-                                            id={`btn-add-searched-item-${item.sku}`}
-                                            type="button"
-                                            onClick={() => {
-                                              setEditingItems([...editingItems, {
-                                                itemId: item.id,
-                                                name: item.name,
-                                                sku: item.sku,
-                                                quantity: 1,
-                                                returnedQuantity: 0,
-                                                isComplimentary: false,
-                                                allocationType: 'Rented'
-                                              }]);
-                                              setEditItemSearchQuery('');
-                                              setShowEditItemDropdown(false);
-                                            }}
-                                            className="px-2 py-1 bg-zinc-900 text-white font-bold text-[9px] uppercase tracking-wider hover:bg-zinc-800 cursor-pointer"
-                                          >
-                                            + Rented
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setEditingItems([...editingItems, {
-                                                itemId: item.id,
-                                                name: item.name,
-                                                sku: item.sku,
-                                                quantity: 1,
-                                                returnedQuantity: 0,
-                                                isComplimentary: true,
-                                                allocationType: 'Complimentary'
-                                              }]);
-                                              setEditItemSearchQuery('');
-                                              setShowEditItemDropdown(false);
-                                            }}
-                                            className="px-2 py-1 bg-emerald-700 text-white font-bold text-[9px] uppercase tracking-wider hover:bg-emerald-800 flex items-center gap-1 cursor-pointer"
-                                          >
-                                            <Gift className="h-2.5 w-2.5" />
-                                            + Comp
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   {inventory.filter(item => {
-                                    const isAvailable = item.quantityAvailable > 0;
-                                    const isNotStagnant = item.status !== 'Retired';
-                                    const isNotAlreadyAdded = !editingItems.some(ei => ei.itemId === item.id);
+                                    const isNoQty = item.isNoQuantity || item.category === 'Corkage & Service Permits';
+                                    const oldTotal = selectedTx.items.filter(t => t.itemId === item.id).reduce((s, t) => s + t.quantity, 0);
+                                    const curEditTotal = editingItems.filter(ei => ei.itemId === item.id).reduce((s, ei) => s + ei.quantity, 0);
+                                    const remainingStock = item.quantityAvailable + oldTotal - curEditTotal;
+                                    const isAvailable = isNoQty || remainingStock > 0;
+                                    const isNotStagnant = item.status !== 'Retired' && item.status !== 'Decommissioned';
                                     const matchesQuery = item.name.toLowerCase().includes(editItemSearchQuery.toLowerCase()) ||
                                                          item.sku.toLowerCase().includes(editItemSearchQuery.toLowerCase());
-                                    return isAvailable && isNotStagnant && isNotAlreadyAdded && matchesQuery;
+                                    return isAvailable && isNotStagnant && matchesQuery;
                                   }).length === 0 && (
                                     <div className="p-3 text-[10px] text-zinc-400 font-semibold uppercase tracking-wider text-center">
                                       No eligible items found
@@ -1936,8 +1980,8 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                       </div>
                     ) : (
                       <div className="bg-zinc-50 border border-zinc-200 divide-y divide-zinc-200/60">
-                        {(selectedTxRevSummary?.breakdown || []).map(({ item, calc }) => (
-                          <div key={item.itemId} className={`p-3 flex items-center justify-between text-xs ${calc.isComplimentary ? 'bg-emerald-50/40' : ''}`}>
+                        {(selectedTxRevSummary?.breakdown || []).map(({ item, calc }, idx) => (
+                          <div key={getTxLineKey(item, idx)} className={`p-3 flex items-center justify-between text-xs ${calc.isComplimentary ? 'bg-emerald-50/40' : ''}`}>
                             <div className="min-w-0 flex-1 pr-3">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-zinc-850 uppercase block truncate">{item.name}</span>
@@ -2229,12 +2273,13 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                       </p>
 
                       <div className="space-y-3">
-                        {selectedTx.items.map((item) => {
+                        {selectedTx.items.map((item, idx) => {
+                          const lineKey = getTxLineKey(item, idx);
                           const remainingToReturn = item.quantity - item.returnedQuantity;
-                          const currentReturnInput = returnQtys[item.itemId] || 0;
+                          const currentReturnInput = returnQtys[lineKey] || 0;
 
                           return (
-                            <div key={item.itemId} className="p-4 bg-zinc-50 border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div key={lineKey} className="p-4 bg-zinc-50 border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
                                   <h4 className="font-bold text-zinc-900 text-xs uppercase tracking-tight truncate">{item.name}</h4>
@@ -2267,29 +2312,29 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                       <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Return Qty</label>
                                       <div className="flex items-center border border-zinc-200 bg-white overflow-hidden mt-1">
                                         <button
-                                          id={`btn-qty-dec-${item.sku}`}
+                                          id={`btn-qty-dec-${item.sku}-${idx}`}
                                           type="button"
-                                          onClick={() => handleReturnQtyChange(item.itemId, currentReturnInput - 1, remainingToReturn)}
+                                          onClick={() => handleReturnQtyChange(lineKey, currentReturnInput - 1, remainingToReturn)}
                                           className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
                                         >
                                           <MinusCircle className="h-3.5 w-3.5" />
                                         </button>
                                         <input
-                                          id={`input-return-qty-${item.sku}`}
+                                          id={`input-return-qty-${item.sku}-${idx}`}
                                           type="number"
                                           min="0"
                                           max={remainingToReturn}
                                           value={currentReturnInput === 0 ? '' : currentReturnInput}
                                           onChange={(e) => {
                                             const val = e.target.value === '' ? 0 : Number(e.target.value);
-                                            handleReturnQtyChange(item.itemId, val, remainingToReturn);
+                                            handleReturnQtyChange(lineKey, val, remainingToReturn);
                                           }}
                                           className="w-10 text-center font-bold text-xs font-mono focus:outline-none py-1"
                                         />
                                         <button
-                                          id={`btn-qty-inc-${item.sku}`}
+                                          id={`btn-qty-inc-${item.sku}-${idx}`}
                                           type="button"
-                                          onClick={() => handleReturnQtyChange(item.itemId, currentReturnInput + 1, remainingToReturn)}
+                                          onClick={() => handleReturnQtyChange(lineKey, currentReturnInput + 1, remainingToReturn)}
                                           className="p-1 hover:bg-zinc-100 text-zinc-500 cursor-pointer"
                                         >
                                           <PlusCircle className="h-3.5 w-3.5" />
@@ -2298,8 +2343,8 @@ export default function TransmittalList({ transmittals, inventory, onReturnItems
                                     </div>
                                     
                                     <button
-                                      id={`btn-max-${item.sku}`}
-                                      onClick={() => handleReturnQtyChange(item.itemId, remainingToReturn, remainingToReturn)}
+                                      id={`btn-max-${item.sku}-${idx}`}
+                                      onClick={() => handleReturnQtyChange(lineKey, remainingToReturn, remainingToReturn)}
                                       className="px-2.5 py-1 border border-zinc-300 hover:border-zinc-500 text-zinc-700 font-bold text-[10px] uppercase tracking-widest mt-4 cursor-pointer"
                                       title="Return all outstanding units"
                                     >

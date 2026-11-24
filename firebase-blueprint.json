@@ -47,6 +47,7 @@
           "items": {
             "type": "object",
             "properties": {
+              "lineId": { "type": "string", "description": "Unique manifest line identifier allowing separate rented and complimentary rows for the same item" },
               "itemId": { "type": "string" },
               "name": { "type": "string" },
               "sku": { "type": "string" },

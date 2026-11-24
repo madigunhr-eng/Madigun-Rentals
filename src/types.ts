@@ -52,6 +52,7 @@ export interface ItemCategory {
 }
 
 export interface TransmittalItem {
+  lineId?: string;
   itemId: string;
   name: string;
   sku: string;
